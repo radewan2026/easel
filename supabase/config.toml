@@ -1,0 +1,40 @@
+[auth]
+enabled = true
+
+[api]
+enabled = true
+
+[db]
+migrations = true
+
+[edge_runtime]
+enabled = true
+policy = "per_worker"
+
+[functions]
+enabled = true
+
+[functions.email-worker]
+enabled = true
+verify_jwt = false
+import_map = false
+
+[functions.email-webhook]
+enabled = true
+verify_jwt = false
+import_map = false
+
+[functions.email-track]
+enabled = true
+verify_jwt = false
+import_map = false
+
+[functions.analytics-rollup]
+enabled = true
+verify_jwt = false
+import_map = false
+
+[functions.email-test]
+enabled = true
+verify_jwt = false
+import_map = false
