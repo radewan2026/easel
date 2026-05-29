@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useEvents, useVenues, useUpdateEvent, useCreateEvent, generateRecurringEvents, useOrders, useUpdateOrderStatus, useEmailBroadcasts, useCreateEmailBroadcast, useUpdateEmailBroadcast, useDeleteEmailBroadcast, useEventAttendeeEmails } from '../../hooks/useEvents';
 import { formatDateTime, formatCurrency, slugify } from '../../lib/utils';
-import { AlertTriangle, ArrowLeft, Save, Upload, X, Image as ImageIcon, Sparkles, Lightbulb, Repeat, ArrowUpDown, ArrowUp, ArrowDown, Send, Mail, Trash2, Eye, MailOpen, CalendarClock, Users, CheckCircle2, DollarSign, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Save, Upload, X, Image as ImageIcon, Sparkles, Lightbulb, Loader2, Repeat, ArrowUpDown, ArrowUp, ArrowDown, Send, Mail, Trash2, Eye, MailOpen, CalendarClock, Users, CheckCircle2, DollarSign, ShieldCheck } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
@@ -20,6 +20,7 @@ import { useProducts } from '../../hooks/useProducts';
 import { useEventAddOns, type EventAddOn } from '../../hooks/useEventAddOns';
 import { useWaitlist } from '../../hooks/useWaitlist';
 import type { Order, EmailBroadcast, Event, EventAssignment } from '../../types/database';
+import { callAiGateway } from '../../lib/aiGateway';
 
 type SortField = 'id' | 'event' | 'purchaser_name' | 'quantity' | 'total_amount' | 'status' | 'created_at';
 type SortDirection = 'asc' | 'desc';
@@ -934,6 +935,10 @@ export default function EditEventPage() {
   const { showToast } = useToast();
 
   const [showHeadlineIdeas, setShowHeadlineIdeas] = useState(false);
+  const [headlineIdeas, setHeadlineIdeas] = useState<string[]>([]);
+  const [isGeneratingContent, setIsGeneratingContent] = useState(false);
+  const [isGeneratingHeadlines, setIsGeneratingHeadlines] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [showReschedule, setShowReschedule] = useState(false);
   const initializedRef = useRef(false);
   const assistantDraft = (location.state as { assistantDraftEvent?: AssistantDraftEvent } | null)?.assistantDraftEvent;
@@ -1044,40 +1049,119 @@ export default function EditEventPage() {
     setUploadedImages(newImages);
   };
 
-  const handleGenerateContent = () => {
-    const content = `<h2>Welcome to ${formData.title}!</h2>
+  const handleGenerateContent = async () => {
+    if (!formData.title.trim()) {
+      showToast('Enter an event title first.', 'info');
+      return;
+    }
 
-<p>Join us for an unforgettable evening of creativity and fun! Whether you're a beginner or an experienced artist, this event is designed for everyone to enjoy.</p>
+    setIsGeneratingContent(true);
+    try {
+      const venueName = venues?.find(v => v.id === formData.venue_id)?.name || 'our studio';
+      const price = formData.base_price_per_seat || 0;
 
-<h3>What to Expect</h3>
-<ul>
-<li>Professional instruction from our talented artists</li>
-<li>All painting supplies provided</li>
-<li>Delicious wine and refreshments</li>
-<li>A relaxed and fun atmosphere</li>
-<li>Take home your own unique masterpiece!</li>
-</ul>
+      const result = await callAiGateway({
+        task: 'event_description',
+        messages: [
+          { role: 'system', content: 'You write HTML event descriptions for a paint-and-sip studio. Return only HTML content. Be engaging and warm.' },
+          { role: 'user', content: `Write an HTML event description for: ${formData.title}. Price per seat: $${price}. Venue: ${venueName}. Include what to expect, who it's for, and a call to action.` },
+        ],
+        maxTokens: 800,
+      });
 
-<h3>Event Details</h3>
-<p>No experience necessary - just bring your enthusiasm and creativity! We'll guide you step-by-step through creating your own beautiful painting. Feel free to bring snacks and your favorite beverages.</p>
-
-<h3>Perfect For</h3>
-<ul>
-<li>Date nights</li>
-<li>Birthday parties</li>
-<li>Team building events</li>
-<li>Girls' night out</li>
-<li>Family fun</li>
-</ul>
-
-<p>Don't miss out on this amazing experience! Reserve your spot today and get ready to paint, sip, and smile.</p>`;
-    
-    setFormData(prev => ({ ...prev, description: content }));
-    showToast('Description generated!');
+      if (result.content) {
+        const description = result.content;
+        setFormData(prev => ({ ...prev, description }));
+        showToast('Description generated with AI!');
+      } else {
+        showToast('AI generation failed. Try again.', 'error');
+      }
+    } catch {
+      showToast('Failed to generate description', 'error');
+    } finally {
+      setIsGeneratingContent(false);
+    }
   };
 
-  const handleGenerateHeadlines = () => {
-    setShowHeadlineIdeas(true);
+  const handleGenerateHeadlines = async () => {
+    if (!formData.title.trim()) {
+      showToast('Enter a title first.', 'info');
+      return;
+    }
+
+    setIsGeneratingHeadlines(true);
+    try {
+      const result = await callAiGateway({
+        task: 'event_headlines',
+        messages: [
+          { role: 'system', content: 'You generate creative event title ideas for a paint-and-sip studio. Return exactly 5 title ideas as a JSON array of strings.' },
+          { role: 'user', content: `Generate 5 event title ideas for: ${formData.title}` },
+        ],
+        maxTokens: 300,
+      });
+
+      if (result.content) {
+        try {
+          const parsed = JSON.parse(result.content);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setHeadlineIdeas(parsed);
+            setShowHeadlineIdeas(true);
+            showToast('Title ideas generated!');
+            return;
+          }
+        } catch {
+          // fall through to generic ideas
+        }
+      }
+      setHeadlineIdeas([
+        `Join Us for ${formData.title} - Fun & Creative Evening`,
+        `${formData.title}: Paint, Sip, and Create Memories`,
+        `Experience ${formData.title} - Perfect Night Out`,
+        `${formData.title} - Unleash Your Creativity`,
+        `Discover the Joy of ${formData.title}`,
+      ]);
+      setShowHeadlineIdeas(true);
+    } catch {
+      setHeadlineIdeas([
+        `Join Us for ${formData.title} - Fun & Creative Evening`,
+        `${formData.title}: Paint, Sip, and Create Memories`,
+        `Experience ${formData.title} - Perfect Night Out`,
+        `${formData.title} - Unleash Your Creativity`,
+        `Discover the Joy of ${formData.title}`,
+      ]);
+      setShowHeadlineIdeas(true);
+    } finally {
+      setIsGeneratingHeadlines(false);
+    }
+  };
+
+  const handleGenerateImage = async () => {
+    setIsGeneratingImage(true);
+    try {
+      const result = await callAiGateway({
+        task: 'image_generation',
+        messages: [
+          { role: 'system', content: 'You generate promotional image URLs for paint-and-sip events. Return only a direct image URL.' },
+          { role: 'user', content: `Generate an image URL for an event titled: ${formData.title || 'paint and sip event'}` },
+        ],
+        maxTokens: 200,
+      });
+
+      if (result.content && (result.content.startsWith('http://') || result.content.startsWith('https://'))) {
+        const imageUrl = result.content;
+        setUploadedImages(prev => [imageUrl, ...prev]);
+        showToast('Image generated with AI!');
+        setIsGeneratingImage(false);
+        return;
+      }
+    } catch {
+      // fall through to unsplash
+    }
+
+    const keywords = encodeURIComponent(formData.title || 'paint sip art');
+    setUploadedImages(prev => [`https://source.unsplash.com/1200x800/?${keywords}`, ...prev]);
+    showToast('Stock photo applied (AI image generation unavailable)');
+    setIsGeneratingImage(false);
   };
 
   const publishReadiness = useMemo(() => {
@@ -1356,8 +1440,8 @@ export default function EditEventPage() {
                       placeholder="Event title"
                       className="flex-1"
                     />
-                    <Button variant="secondary" size="sm" onClick={handleGenerateHeadlines} title="AI Title Ideas">
-                      <Lightbulb className="h-4 w-4" />
+                    <Button variant="secondary" size="sm" onClick={handleGenerateHeadlines} disabled={isGeneratingHeadlines} title="AI Title Ideas">
+                      {isGeneratingHeadlines ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lightbulb className="h-4 w-4" />}
                     </Button>
                   </div>
                 </div>
@@ -1371,9 +1455,9 @@ export default function EditEventPage() {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Description</label>
-                  <Button variant="secondary" size="sm" onClick={handleGenerateContent}>
-                    <Sparkles className="h-4 w-4 mr-1" />
-                    AI Auto Write
+                  <Button variant="secondary" size="sm" onClick={handleGenerateContent} disabled={isGeneratingContent}>
+                    {isGeneratingContent ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                    {isGeneratingContent ? 'Generating...' : 'AI Auto Write'}
                   </Button>
                 </div>
                 <Textarea
@@ -1737,6 +1821,10 @@ export default function EditEventPage() {
                 <Button variant="secondary" type="button" className="relative">
                   Browse Files
                 </Button>
+                <Button variant="secondary" type="button" onClick={handleGenerateImage} disabled={isGeneratingImage} className="ml-2">
+                  {isGeneratingImage ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                  {isGeneratingImage ? 'Generating...' : 'AI Generate'}
+                </Button>
                 <span className="ml-3" style={{ color: 'var(--text-muted)' }}>Select images</span>
               </div>
 
@@ -1856,23 +1944,29 @@ export default function EditEventPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="rounded-lg p-6 max-w-md w-full mx-4" style={{ backgroundColor: 'var(--card-bg)' }}>
             <h3 className="text-lg font-semibold mb-4">AI Title Ideas</h3>
-            <div className="space-y-2">
-              {[
-                `Join Us for ${formData.title || 'Painting Event'} - Fun & Creative Evening`,
-                `${formData.title || 'Painting Event'}: Paint, Sip, and Create Memories`,
-                `Experience ${formData.title || 'Painting Event'} - Perfect Night Out`,
-                `${formData.title || 'Painting Event'} - Unleash Your Creativity`,
-                `Discover the Joy of ${formData.title || 'Painting Event'}`,
-              ].map((headline, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => applyHeadline(headline)}
-                  className="w-full text-left p-3 rounded-lg border hover:border-primary-500 hover:bg-primary-50 transition-colors"
-                >
-                  {headline}
-                </button>
-              ))}
-            </div>
+            {isGeneratingHeadlines ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin" style={{ color: 'var(--text-muted)' }} />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {(headlineIdeas.length > 0 ? headlineIdeas : [
+                  `Join Us for ${formData.title || 'Painting Event'} - Fun & Creative Evening`,
+                  `${formData.title || 'Painting Event'}: Paint, Sip, and Create Memories`,
+                  `Experience ${formData.title || 'Painting Event'} - Perfect Night Out`,
+                  `${formData.title || 'Painting Event'} - Unleash Your Creativity`,
+                  `Discover the Joy of ${formData.title || 'Painting Event'}`,
+                ]).map((headline, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => applyHeadline(headline)}
+                    className="w-full text-left p-3 rounded-lg border hover:border-primary-500 hover:bg-primary-50 transition-colors"
+                  >
+                    {headline}
+                  </button>
+                ))}
+              </div>
+            )}
             <Button variant="ghost" className="mt-4 w-full" onClick={() => setShowHeadlineIdeas(false)}>
               Cancel
             </Button>

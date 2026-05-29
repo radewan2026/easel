@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Activity,
   AlertTriangle,
   ArrowRight,
   BarChart3,
@@ -18,9 +17,10 @@ import {
   KeyRound,
   Link2,
   ListMinus,
+  Loader2,
   Lock,
   Mail,
-  Megaphone,
+  MessageSquare,
   Minus,
   MousePointerClick,
   Palette,
@@ -32,8 +32,6 @@ import {
   Save,
   Search,
   Send,
-  ServerCog,
-  Settings,
   ShieldCheck,
   ShoppingCart,
   Sparkles,
@@ -57,263 +55,24 @@ import { Textarea } from '../../components/ui/Textarea';
 import { useToast } from '../../components/ui/Toast';
 import { useSettings, useUpdateSetting } from '../../hooks/useAdmin';
 import { useEmailCenter, useQueueEmailCampaign, useUpdateEmailCampaignStatus, type EmailSegment, type EmailTemplate, type EmailTemplateType } from '../../hooks/useEmailCenter';
+import { useSmsCenter, useSaveSmsTemplate, useDeleteSmsTemplate, useSendSms } from '../../hooks/useSmsCenter';
 import { useGalleries } from '../../hooks/useGallery';
 import { readLocalAnalyticsEvents } from '../../lib/analytics';
 import { addTrackingToHtmlLinks, buildTrackedUrl, extractHtmlLinks, type TrackingParams } from '../../lib/marketingLinks';
 import { supabase } from '../../lib/supabase';
+import { callAiGateway } from '../../lib/aiGateway';
 import { formatCurrency, formatDateTime, slugify } from '../../lib/utils';
 import type { Setting } from '../../types/database';
-
-type Tab = 'overview' | 'automations' | 'campaigns' | 'segments' | 'templates' | 'delivery' | 'performance' | 'settings';
-
-const tabs: { id: Tab; label: string; icon: LucideIcon }[] = [
-  { id: 'overview', label: 'Overview', icon: Activity },
-  { id: 'automations', label: 'Automations', icon: Workflow },
-  { id: 'campaigns', label: 'Campaigns', icon: Megaphone },
-  { id: 'segments', label: 'Segments', icon: Users },
-  { id: 'templates', label: 'Templates', icon: Mail },
-  { id: 'delivery', label: 'Delivery', icon: ServerCog },
-  { id: 'performance', label: 'Performance', icon: TrendingUp },
-  { id: 'settings', label: 'Settings', icon: Settings },
-];
-
-const intentVariant: Record<EmailSegment['intent'], 'primary' | 'success' | 'warning' | 'gray'> = {
-  revenue: 'success',
-  retention: 'warning',
-  operations: 'primary',
-  growth: 'gray',
-};
-
-function getErrorMessage(error: unknown, fallback = 'Unknown error') {
-  return error instanceof Error ? error.message : fallback;
-}
-
-const workflowSteps = [
-  'Customer or owner action creates an event.',
-  'Automation checks timing, consent, suppression, and template rules.',
-  'Email is queued server-side with provider metadata.',
-  'Provider webhooks write opens, clicks, bounces, spam, and delivery status.',
-  'Customer profile, dashboard signals, and campaign reports update.',
-];
-
-type SuppressionReason = 'unsubscribe' | 'bounce' | 'complaint' | 'manual';
-
-type SuppressionEntry = {
-  id: string;
-  email: string;
-  reason: SuppressionReason;
-  notes: string;
-  createdAt: string;
-};
-
-type SegmentRule = {
-  id: string;
-  name: string;
-  description: string;
-  intent: EmailSegment['intent'];
-  source: 'customers' | 'newsletter' | 'gift_cards' | 'private_requests' | 'memberships' | 'analytics';
-  condition: 'all' | 'lapsed' | 'recent' | 'unredeemed' | 'open_leads' | 'credits_available' | 'abandoned_checkout';
-  count: number;
-};
-
-type RecoveryCampaignDraft = {
-  name: string;
-  subject: string;
-  body: string;
-  recipientCount: number;
-  source?: string;
-};
-
-const RECOVERY_DRAFT_STORAGE_KEY = 'easel_recovery_campaign_draft';
-
-type EmailBlockType = 'hero' | 'heading' | 'text' | 'button' | 'image' | 'divider' | 'spacer' | 'promo' | 'event' | 'columns';
-
-type EmailBlock = {
-  id: string;
-  type: EmailBlockType;
-  content: string;
-  eyebrow?: string;
-  secondaryContent?: string;
-  url?: string;
-  align?: 'left' | 'center';
-  backgroundColor?: string;
-  textColor?: string;
-  accentColor?: string;
-  padding?: 'compact' | 'normal' | 'spacious';
-  condition?: string;
-};
-
-type EmailBrandStyles = {
-  brandName: string;
-  logoUrl: string;
-  primaryColor: string;
-  accentColor: string;
-  backgroundColor: string;
-  cardColor: string;
-  footerAddress: string;
-};
-
-type EmailTemplateVersion = {
-  id: string;
-  templateId: string;
-  templateName: string;
-  subject: string;
-  previewText: string;
-  body: string;
-  savedAt: string;
-  note: string;
-};
-
-type EmailWorkspaceSettings = {
-  templates: EmailTemplate[];
-  templateVersions?: EmailTemplateVersion[];
-  customSegments: SegmentRule[];
-  suppressionList: SuppressionEntry[];
-  brandStyles?: EmailBrandStyles;
-  providerSettings: {
-    provider: string;
-    fromName: string;
-    fromEmail: string;
-    replyTo: string;
-    sendingDomain: string;
-    ownerApprovalRequired: boolean;
-  };
-};
-
-const defaultBrandStyles: EmailBrandStyles = {
-  brandName: 'Easel Paint & Sip',
-  logoUrl: '',
-  primaryColor: '#111827',
-  accentColor: '#f97316',
-  backgroundColor: '#f8fafc',
-  cardColor: '#ffffff',
-  footerAddress: 'Lake Tahoe Paint & Sip',
-};
-
-const mergeTagGroups = [
-  { label: 'Customer', tags: ['{{first_name}}', '{{customer_email}}', '{{unsubscribe_url}}'] },
-  { label: 'Event', tags: ['{{event_title}}', '{{event_datetime}}', '{{event_url}}', '{{venue_name}}'] },
-  { label: 'Order', tags: ['{{order_total}}', '{{ticket_count}}', '{{receipt_url}}'] },
-  { label: 'Membership', tags: ['{{credit_count}}', '{{renewal_date}}', '{{membership_plan}}'] },
-  { label: 'Gift Card', tags: ['{{gift_card_balance}}', '{{gift_card_code}}'] },
-  { label: 'Private Request', tags: ['{{proposal_url}}', '{{guest_count}}', '{{preferred_date}}'] },
-];
-
-function readJson<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) as T : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
-}
-
-function bodyToBlocks(body: string): EmailBlock[] {
-  if (!body.trim()) {
-    return [{ id: `block-${Date.now()}`, type: 'text', content: 'Hi {{first_name}}, we would love to see you at the studio soon.', padding: 'normal' }];
-  }
-
-  if (body.includes('data-email-builder="true"')) {
-    const blocks: EmailBlock[] = [];
-    const blockPattern = /<!-- block:(.*?) -->([\s\S]*?)<!-- \/block -->/g;
-    let match;
-    while ((match = blockPattern.exec(body)) !== null) {
-      const type = match[1] as EmailBlockType;
-      const html = match[2];
-      const condition = body.slice(0, match.index).match(/<!-- condition:(.*?) -->\s*$/)?.[1];
-      const text = html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-      const href = html.match(/href="([^"]+)"/)?.[1] || html.match(/src="([^"]+)"/)?.[1];
-      const backgroundColor = html.match(/background(?:-color)?:\s*(#[0-9a-fA-F]{3,6}|[a-zA-Z]+)/)?.[1];
-      const color = html.match(/color:\s*(#[0-9a-fA-F]{3,6}|[a-zA-Z]+)/)?.[1];
-      blocks.push({
-        id: `block-${Date.now()}-${blocks.length}`,
-        type,
-        content: text || (type === 'divider' || type === 'spacer' ? '' : 'Edit this block'),
-        url: href,
-        align: html.includes('text-align:center') || html.includes('align="center"') ? 'center' : 'left',
-        backgroundColor,
-        textColor: color,
-        padding: html.includes('padding:32px') ? 'spacious' : html.includes('padding:12px') ? 'compact' : 'normal',
-        condition,
-      });
-    }
-    if (blocks.length) return blocks;
-  }
-
-  return body
-    .split(/\n{2,}/)
-    .filter(Boolean)
-    .map((paragraph, index) => ({
-      id: `block-${Date.now()}-${index}`,
-      type: index === 0 && paragraph.length < 90 ? 'heading' as const : 'text' as const,
-      content: paragraph.replace(/<[^>]+>/g, '').trim(),
-      align: index === 0 ? 'center' as const : 'left' as const,
-      padding: 'normal' as const,
-    }));
-}
-
-function blocksToHtml(blocks: EmailBlock[], brand: EmailBrandStyles = defaultBrandStyles) {
-  const rendered = blocks.map((block) => {
-    const align = block.align || 'left';
-    const paddingMap = { compact: 12, normal: 20, spacious: 32 };
-    const padding = paddingMap[block.padding || 'normal'];
-    const textColor = block.textColor || '#111827';
-    const accentColor = block.accentColor || '#f97316';
-    const backgroundColor = block.backgroundColor || 'transparent';
-    const panelStyle = backgroundColor !== 'transparent' ? `background:${escapeHtml(backgroundColor)};border-radius:14px;padding:${padding}px;margin:0 0 18px;` : `padding:${padding}px 0;margin:0;`;
-    const conditionOpen = block.condition ? `<!-- condition:${block.condition} -->` : '';
-    const conditionClose = block.condition ? '<!-- /condition -->' : '';
-    if (block.type === 'hero') {
-      return `${conditionOpen}<!-- block:hero --><div style="${panelStyle}text-align:${align};"><p style="margin:0 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${accentColor};">${escapeHtml(block.eyebrow || 'Paint & Sip')}</p><h1 style="margin:0 0 14px;font-size:32px;line-height:1.15;color:${escapeHtml(textColor)};">${escapeHtml(block.content)}</h1><p style="margin:0;font-size:16px;line-height:1.6;color:#4b5563;">${escapeHtml(block.secondaryContent || 'A creative night out is waiting for you.').replaceAll('\n', '<br />')}</p></div><!-- /block -->${conditionClose}`;
-    }
-    if (block.type === 'heading') {
-      return `${conditionOpen}<!-- block:heading --><h2 style="margin:0 0 18px;font-size:26px;line-height:1.2;color:${escapeHtml(textColor)};text-align:${align};">${escapeHtml(block.content)}</h2><!-- /block -->${conditionClose}`;
-    }
-    if (block.type === 'button') {
-      const href = escapeHtml(block.url || '{{event_url}}');
-      return `${conditionOpen}<!-- block:button --><p style="text-align:${align};margin:24px 0;"><a href="${href}" style="display:inline-block;background:${accentColor};color:#ffffff;text-decoration:none;padding:13px 20px;border-radius:8px;font-weight:700;">${escapeHtml(block.content || 'Reserve your seat')}</a></p><!-- /block -->${conditionClose}`;
-    }
-    if (block.type === 'image') {
-      const src = escapeHtml(block.url || 'https://placehold.co/1200x675?text=Paint+%26+Sip');
-      return `${conditionOpen}<!-- block:image --><img src="${src}" alt="${escapeHtml(block.content || 'Paint and sip event')}" style="display:block;width:100%;max-width:560px;border-radius:10px;margin:20px auto;" /><!-- /block -->${conditionClose}`;
-    }
-    if (block.type === 'promo') {
-      return `${conditionOpen}<!-- block:promo --><div style="background:${escapeHtml(block.backgroundColor || '#fff7ed')};border:1px solid #fed7aa;border-radius:14px;padding:${padding}px;margin:0 0 18px;text-align:${align};"><p style="margin:0 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${accentColor};">${escapeHtml(block.eyebrow || 'Limited offer')}</p><p style="margin:0 0 8px;font-size:24px;font-weight:800;color:${escapeHtml(textColor)};">${escapeHtml(block.content)}</p><p style="margin:0;font-size:15px;line-height:1.5;color:#4b5563;">${escapeHtml(block.secondaryContent || '').replaceAll('\n', '<br />')}</p></div><!-- /block -->${conditionClose}`;
-    }
-    if (block.type === 'event') {
-      const href = escapeHtml(block.url || '{{event_url}}');
-      return `${conditionOpen}<!-- block:event --><div style="border:1px solid #e5e7eb;border-radius:14px;padding:${padding}px;margin:0 0 18px;"><p style="margin:0 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${accentColor};">${escapeHtml(block.eyebrow || '{{event_datetime}}')}</p><h3 style="margin:0 0 8px;font-size:22px;line-height:1.25;color:${escapeHtml(textColor)};">${escapeHtml(block.content || '{{event_title}}')}</h3><p style="margin:0 0 14px;font-size:15px;line-height:1.5;color:#4b5563;">${escapeHtml(block.secondaryContent || 'Seats are available for this upcoming workshop.').replaceAll('\n', '<br />')}</p><a href="${href}" style="color:${accentColor};font-weight:700;text-decoration:none;">View event details &rarr;</a></div><!-- /block -->${conditionClose}`;
-    }
-    if (block.type === 'columns') {
-      const [left, right] = block.content.split('||');
-      return `${conditionOpen}<!-- block:columns --><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 18px;"><tr><td width="50%" style="vertical-align:top;padding:14px;border-radius:12px;background:${escapeHtml(block.backgroundColor || '#f9fafb')};"><p style="margin:0;font-size:15px;line-height:1.5;color:#374151;">${escapeHtml(left || 'Column one').replaceAll('\n', '<br />')}</p></td><td width="16"></td><td width="50%" style="vertical-align:top;padding:14px;border-radius:12px;background:${escapeHtml(block.backgroundColor || '#f9fafb')};"><p style="margin:0;font-size:15px;line-height:1.5;color:#374151;">${escapeHtml(right || 'Column two').replaceAll('\n', '<br />')}</p></td></tr></table><!-- /block -->${conditionClose}`;
-    }
-    if (block.type === 'divider') {
-      return `${conditionOpen}<!-- block:divider --><hr style="border:0;border-top:1px solid #e5e7eb;margin:26px 0;" /><!-- /block -->${conditionClose}`;
-    }
-    if (block.type === 'spacer') {
-      return `${conditionOpen}<!-- block:spacer --><div style="height:${block.padding === 'spacious' ? 40 : block.padding === 'compact' ? 12 : 24}px;line-height:${block.padding === 'spacious' ? 40 : block.padding === 'compact' ? 12 : 24}px;">&nbsp;</div><!-- /block -->${conditionClose}`;
-    }
-    return `${conditionOpen}<!-- block:text --><div style="${panelStyle}"><p style="margin:0;font-size:16px;line-height:1.6;color:${escapeHtml(block.textColor || '#374151')};text-align:${align};">${escapeHtml(block.content).replaceAll('\n', '<br />')}</p></div><!-- /block -->${conditionClose}`;
-  }).join('\n');
-
-  return `<div data-email-builder="true" style="background:${escapeHtml(brand.backgroundColor)};padding:24px;">
-  <div style="display:none;max-height:0;overflow:hidden;color:transparent;">{{preview_text}}</div>
-  <div style="max-width:640px;margin:0 auto;background:${escapeHtml(brand.cardColor)};border-radius:16px;padding:34px;font-family:Arial,Helvetica,sans-serif;box-shadow:0 8px 30px rgba(15,23,42,.08);">
-    <div style="text-align:center;margin:0 0 26px;">${brand.logoUrl ? `<img src="${escapeHtml(brand.logoUrl)}" alt="${escapeHtml(brand.brandName)}" style="max-width:160px;margin:0 auto 10px;display:block;" />` : ''}<p style="margin:0;font-size:13px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:${escapeHtml(brand.accentColor)};">${escapeHtml(brand.brandName)}</p></div>
-${rendered}
-    <p style="margin:30px 0 0;font-size:12px;line-height:1.5;color:#6b7280;text-align:center;">${escapeHtml(brand.footerAddress)}<br />You are receiving this because you opted into ${escapeHtml(brand.brandName)} updates. <a href="{{unsubscribe_url}}" style="color:${escapeHtml(brand.accentColor)};">Manage preferences</a></p>
-  </div>
-</div>`;
-}
+import {
+  Tab, tabs, intentVariant, getErrorMessage, workflowSteps,
+  type SuppressionReason, type SuppressionEntry, type SegmentRule,
+  type RecoveryCampaignDraft, RECOVERY_DRAFT_STORAGE_KEY,
+  type EmailBlockType, type EmailBlock, type EmailBrandStyles,
+  type EmailTemplateVersion, type EmailWorkspaceSettings,
+  defaultBrandStyles, mergeTagGroups, readJson,
+  bodyToBlocks, blocksToHtml,
+  smsStatusVariant, smsSegmentCount, type SmsTemplate, type SmsTemplateType,
+} from '../../components/admin/email/emailUtils';
 
 export default function EmailCenterPage() {
   const { data, isLoading, isError, error } = useEmailCenter();
@@ -322,8 +81,19 @@ export default function EmailCenterPage() {
   const updateSetting = useUpdateSetting();
   const queueCampaign = useQueueEmailCampaign();
   const updateCampaignStatus = useUpdateEmailCampaignStatus();
+  const { data: smsData } = useSmsCenter();
+  const saveSmsTemplate = useSaveSmsTemplate();
+  const deleteSmsTemplate = useDeleteSmsTemplate();
+  const sendSms = useSendSms();
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>('overview');
+  // SMS tab state
+  const [smsTemplateDraft, setSmsTemplateDraft] = useState<SmsTemplate | null>(null);
+  const [smsTestRecipients, setSmsTestRecipients] = useState('');
+  const [smsSendBody, setSmsSendBody] = useState('');
+  const [smsAudience, setSmsAudience] = useState('opt-in-marketing');
+  const [smsSending, setSmsSending] = useState(false);
+  const [deleteConfirmSmsTemplate, setDeleteConfirmSmsTemplate] = useState<SmsTemplate | null>(null);
   const [selectedAudienceId, setSelectedAudienceId] = useState('newsletter-active');
   const [campaignName, setCampaignName] = useState('Weekend seats promo');
   const [subject, setSubject] = useState('Fresh paint nights are open this week');
@@ -389,6 +159,9 @@ export default function EmailCenterPage() {
   const [recoveryWaitMinutes, setRecoveryWaitMinutes] = useState(() => Number(localStorage.getItem('easel_recovery_wait_minutes')) || 60);
   const [recoveryStopOnCompletion, setRecoveryStopOnCompletion] = useState(() => localStorage.getItem('easel_recovery_stop_on_completion') !== 'false');
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false);
+  const [aiGeneratingSubject, setAiGeneratingSubject] = useState(false);
+  const [aiGeneratingContent, setAiGeneratingContent] = useState(false);
+  const [aiGeneratingVariant, setAiGeneratingVariant] = useState(false);
   const backendAvailable = data?.backendConnected ?? false;
 
   // Load workspace + DB data on mount
@@ -807,6 +580,140 @@ See you at the studio,
     setSelectedBlockId(block.id);
   };
 
+  const generateTemplateSubject = async () => {
+    setAiGeneratingSubject(true);
+    try {
+      const result = await callAiGateway({
+        task: 'email_subject',
+        messages: [
+          { role: 'system', content: 'You are an email marketing copywriter for a paint-and-sip studio. Generate a compelling subject line (max 60 chars) and preview text. Return JSON: {"subject": "...", "preheader": "..."}' },
+          { role: 'user', content: templateDraft?.name ? `Generate a subject line for an email template called "${templateDraft.name}"` : 'Generate a paint-and-sip email subject line' },
+        ],
+        maxTokens: 200,
+      });
+      if (result.content) {
+        try {
+          const parsed = JSON.parse(result.content);
+          if (parsed.subject) setTemplateDraft(prev => prev ? { ...prev, subject: parsed.subject, previewText: parsed.preheader || prev.previewText } : prev);
+          showToast('Subject line generated!');
+          return;
+        } catch {
+          setTemplateDraft(prev => prev ? { ...prev, subject: result.content!.slice(0, 60) } : prev);
+          showToast('Subject line generated!');
+          return;
+        }
+      }
+      showToast('Failed to generate subject line', 'error');
+    } catch {
+      showToast('Failed to generate subject line', 'error');
+    } finally {
+      setAiGeneratingSubject(false);
+    }
+  };
+
+  const generateTemplateContent = async () => {
+    setAiGeneratingContent(true);
+    try {
+      const result = await callAiGateway({
+        task: 'email_content',
+        messages: [
+          { role: 'system', content: 'You write email body content for a paint-and-sip studio. Return plain text email body (HTML not needed). Be warm and engaging.' },
+          { role: 'user', content: templateDraft?.name ? `Write an email body for "${templateDraft.name}" template. Keep it concise and friendly.` : 'Write a friendly paint-and-sip promotional email body.' },
+        ],
+        maxTokens: 600,
+      });
+      if (result.content) {
+        setTemplateDraft(prev => prev ? { ...prev, body: result.content ?? prev.body } : prev);
+        setVisualBlocks(bodyToBlocks(result.content));
+        showToast('Content generated!');
+      } else {
+        showToast('Failed to generate content', 'error');
+      }
+    } catch {
+      showToast('Failed to generate content', 'error');
+    } finally {
+      setAiGeneratingContent(false);
+    }
+  };
+
+  const generateCampaignSubject = async () => {
+    setAiGeneratingSubject(true);
+    try {
+      const result = await callAiGateway({
+        task: 'email_subject',
+        messages: [
+          { role: 'system', content: 'You write email subject lines for a paint-and-sip studio. Max 60 chars. Return JSON: {"subject": "...", "preheader": "..."}' },
+          { role: 'user', content: campaignName ? `Write a subject line for a campaign called "${campaignName}"` : 'Write a paint-and-sip email subject line' },
+        ],
+        maxTokens: 200,
+      });
+      if (result.content) {
+        try {
+          const parsed = JSON.parse(result.content);
+          if (parsed.subject) setSubject(parsed.subject);
+          showToast('Subject generated!');
+          return;
+        } catch {
+          setSubject(result.content.slice(0, 60));
+          return;
+        }
+      }
+      showToast('Failed to generate subject', 'error');
+    } catch {
+      showToast('Failed to generate subject', 'error');
+    } finally {
+      setAiGeneratingSubject(false);
+    }
+  };
+
+  const generateCampaignVariant = async () => {
+    setAiGeneratingVariant(true);
+    try {
+      const result = await callAiGateway({
+        task: 'email_subject_variant',
+        messages: [
+          { role: 'system', content: 'You write A/B test subject line variants. Return a single subject line (max 60 chars).' },
+          { role: 'user', content: `Write an alternative A/B test subject line for: "${subject}"` },
+        ],
+        maxTokens: 100,
+      });
+      if (result.content) {
+        setSubjectVariantB(result.content.slice(0, 60));
+        showToast('Variant generated!');
+      } else {
+        showToast('Failed to generate variant', 'error');
+      }
+    } catch {
+      showToast('Failed to generate variant', 'error');
+    } finally {
+      setAiGeneratingVariant(false);
+    }
+  };
+
+  const generateCampaignContent = async () => {
+    setAiGeneratingContent(true);
+    try {
+      const result = await callAiGateway({
+        task: 'email_content',
+        messages: [
+          { role: 'system', content: 'You write email body content for a paint-and-sip studio. Return plain text. Be warm and engaging.' },
+          { role: 'user', content: campaignName ? `Write a short email body for campaign: ${campaignName}` : 'Write a short promotional email for a paint-and-sip studio.' },
+        ],
+        maxTokens: 600,
+      });
+      if (result.content) {
+        setBody(result.content);
+        showToast('Campaign body generated!');
+      } else {
+        showToast('Failed to generate content', 'error');
+      }
+    } catch {
+      showToast('Failed to generate content', 'error');
+    } finally {
+      setAiGeneratingContent(false);
+    }
+  };
+
   const updateVisualBlock = (id: string, updates: Partial<EmailBlock>) => {
     setTemplateDirty(true);
     setVisualBlocks((blocks) => blocks.map((block) => block.id === id ? { ...block, ...updates } : block));
@@ -1030,6 +937,65 @@ See you at the studio,
     localStorage.setItem('easel_email_brand_styles', JSON.stringify(brandStyles));
     if (backendAvailable) handleSaveWorkspace();
     else showToast('Brand styles saved locally');
+  };
+
+  const handleSaveSmsTemplate = async () => {
+    if (!smsTemplateDraft) return;
+    if (!smsTemplateDraft.name.trim()) { showToast('Template name is required', 'error'); return; }
+    if (!smsTemplateDraft.body.trim()) { showToast('Message body is required', 'error'); return; }
+    try {
+      await saveSmsTemplate.mutateAsync({
+        id: smsTemplateDraft.id.startsWith('new-') ? undefined : smsTemplateDraft.id,
+        name: smsTemplateDraft.name,
+        templateType: smsTemplateDraft.templateType,
+        triggerName: smsTemplateDraft.triggerName,
+        body: smsTemplateDraft.body,
+        isActive: smsTemplateDraft.isActive,
+      });
+      showToast('SMS template saved');
+      setSmsTemplateDraft(null);
+    } catch (err) {
+      showToast(`Failed to save template: ${getErrorMessage(err)}`, 'error');
+    }
+  };
+
+  const handleDeleteSmsTemplate = async () => {
+    if (!deleteConfirmSmsTemplate) return;
+    try {
+      await deleteSmsTemplate.mutateAsync(deleteConfirmSmsTemplate.id);
+      showToast('SMS template deleted');
+      setDeleteConfirmSmsTemplate(null);
+    } catch (err) {
+      showToast(`Failed to delete template: ${getErrorMessage(err)}`, 'error');
+    }
+  };
+
+  const handleSendSms = async () => {
+    const recipients = smsTestRecipients
+      .split(/[\n,]/)
+      .map((r) => r.trim())
+      .filter(Boolean);
+    const usingAudience = recipients.length === 0;
+    if (usingAudience && !smsAudience) { showToast('Add recipients or pick an audience', 'error'); return; }
+    if (!smsSendBody.trim()) { showToast('Message body is required', 'error'); return; }
+    setSmsSending(true);
+    try {
+      const result = await sendSms.mutateAsync({
+        body: smsSendBody,
+        recipients,
+        audienceKey: usingAudience ? smsAudience : undefined,
+        campaignName: 'Manual SMS send',
+      });
+      const sent = (result as { sent?: number })?.sent ?? 0;
+      const dry = (result as { dryRun?: boolean })?.dryRun;
+      showToast(dry ? `Dry run: ${sent} message(s) would send` : `${sent} message(s) sent`);
+      setSmsSendBody('');
+      setSmsTestRecipients('');
+    } catch (err) {
+      showToast(`SMS send failed: ${getErrorMessage(err, 'sms-worker function unavailable')}`, 'error');
+    } finally {
+      setSmsSending(false);
+    }
   };
 
   const workspaceSnapshot = (): EmailWorkspaceSettings => ({
@@ -1510,7 +1476,13 @@ See you at the studio,
                 </select>
               </div>
               <div>
-                <label htmlFor="campaign-subject" className="mb-1 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Subject</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label htmlFor="campaign-subject" className="block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Subject</label>
+                  <Button type="button" variant="ghost" size="sm" onClick={generateCampaignSubject} disabled={aiGeneratingSubject} className="text-primary-500">
+                    {aiGeneratingSubject ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                    AI Subject
+                  </Button>
+                </div>
                 <Input id="campaign-subject" value={subject} onChange={(event) => setSubject(event.target.value)} />
               </div>
               <div className="rounded-lg border p-3" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-tertiary)' }}>
@@ -1528,10 +1500,16 @@ See you at the studio,
                 </label>
                 {abTestEnabled && (
                   <div className="mt-3 space-y-3">
-                    <label className="block text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
-                      Subject B
-                      <Input className="mt-1" value={subjectVariantB} onChange={(event) => setSubjectVariantB(event.target.value)} />
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                        Subject B
+                      </label>
+                      <Button type="button" variant="ghost" size="sm" onClick={generateCampaignVariant} disabled={aiGeneratingVariant} className="text-primary-500">
+                        {aiGeneratingVariant ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Sparkles className="h-3 w-3 mr-1" />}
+                        AI Variant
+                      </Button>
+                    </div>
+                    <Input className="mt-1" value={subjectVariantB} onChange={(event) => setSubjectVariantB(event.target.value)} />
                     <div className="grid gap-3 md:grid-cols-2">
                       <label className="block text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
                         Test pool
@@ -1565,7 +1543,13 @@ See you at the studio,
                 )}
               </div>
               <div>
-                <label htmlFor="campaign-body" className="mb-1 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Draft body</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label htmlFor="campaign-body" className="block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Draft body</label>
+                  <Button type="button" variant="ghost" size="sm" onClick={generateCampaignContent} disabled={aiGeneratingContent} className="text-primary-500">
+                    {aiGeneratingContent ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                    AI Write
+                  </Button>
+                </div>
                 <Textarea id="campaign-body" value={body} onChange={(event) => setBody(event.target.value)} rows={8} />
               </div>
               <div className="rounded-lg border p-3" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-tertiary)' }}>
@@ -2010,7 +1994,13 @@ See you at the studio,
                     </div>
                   </div>
                   <div>
-                    <label htmlFor="template-subject" className="mb-1 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Subject</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label htmlFor="template-subject" className="block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Subject</label>
+                      <Button type="button" variant="ghost" size="sm" onClick={generateTemplateSubject} disabled={aiGeneratingSubject} className="text-primary-500">
+                        {aiGeneratingSubject ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                        AI Subject
+                      </Button>
+                    </div>
                     <Input id="template-subject" value={templateDraft.subject} onChange={(event) => { setTemplateDirty(true); setTemplateDraft({ ...templateDraft, subject: event.target.value }); }} />
                   </div>
                   <div>
@@ -2018,7 +2008,13 @@ See you at the studio,
                     <Input id="template-preview" value={templateDraft.previewText} onChange={(event) => { setTemplateDirty(true); setTemplateDraft({ ...templateDraft, previewText: event.target.value }); }} />
                   </div>
                   <div>
-                    <label htmlFor="template-body" className="mb-1 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Body</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label htmlFor="template-body" className="block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Body</label>
+                      <Button type="button" variant="ghost" size="sm" onClick={generateTemplateContent} disabled={aiGeneratingContent} className="text-primary-500">
+                        {aiGeneratingContent ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                        AI Write
+                      </Button>
+                    </div>
                     <Textarea id="template-body" value={templateDraft.body} onChange={(event) => { setTemplateDirty(true); setTemplateDraft({ ...templateDraft, body: event.target.value }); }} rows={10} />
                   </div>
                   <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-tertiary)' }}>
@@ -2417,6 +2413,203 @@ See you at the studio,
         </div>
       )}
 
+      {activeTab === 'sms' && (
+        <div role="tabpanel" id="tabpanel-sms" aria-labelledby="tab-sms" className="grid grid-cols-12 gap-6">
+          {/* Stats */}
+          <div className="col-span-12 grid grid-cols-2 gap-4 md:grid-cols-4">
+            {[
+              { label: 'Sent (30d)', value: smsData?.performance.sent30d ?? 0, icon: Send },
+              { label: 'Delivery rate', value: `${smsData?.performance.deliveryRate ?? 0}%`, icon: CheckCircle2 },
+              { label: 'Opted in', value: smsData?.optInCount ?? 0, icon: Users },
+              { label: 'Suppressed', value: smsData?.suppressionCount ?? 0, icon: UserMinus },
+            ].map((stat) => {
+              const Icon = stat.icon;
+              return (
+                <Card key={stat.label}>
+                  <CardContent className="flex items-center gap-3 p-4">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                      <Icon className="h-5 w-5" style={{ color: 'var(--primary-color)' }} />
+                    </div>
+                    <div>
+                      <p className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>{stat.value}</p>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{stat.label}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* Templates */}
+          <Card className="col-span-12 xl:col-span-7">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>SMS Templates</CardTitle>
+              <Button
+                variant="secondary"
+                onClick={() => setSmsTemplateDraft({
+                  id: `new-${Date.now()}`,
+                  name: '',
+                  templateType: 'marketing',
+                  triggerName: 'manual',
+                  body: '',
+                  isActive: true,
+                  updatedAt: new Date().toISOString(),
+                })}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                New Template
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {!smsData?.backendConnected && (
+                <div className="mb-4 flex items-start gap-2 rounded-lg border p-3" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-tertiary)' }}>
+                  <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                    SMS tables not detected. Deploy the <code>sms_system</code> migration and the <code>sms-worker</code> function to enable live sending.
+                  </p>
+                </div>
+              )}
+              {smsData?.templates.length ? (
+                <div className="space-y-2">
+                  {smsData.templates.map((tmpl) => (
+                    <div key={tmpl.id} className="flex items-start justify-between gap-3 rounded-lg border p-3" style={{ borderColor: 'var(--border-color)' }}>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium" style={{ color: 'var(--text-primary)' }}>{tmpl.name}</p>
+                          <Badge variant={tmpl.templateType === 'transactional' ? 'primary' : tmpl.templateType === 'marketing' ? 'success' : 'gray'}>{tmpl.templateType}</Badge>
+                          {!tmpl.isActive && <Badge variant="gray">paused</Badge>}
+                        </div>
+                        <p className="mt-1 truncate text-sm" style={{ color: 'var(--text-muted)' }}>{tmpl.body}</p>
+                        <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>{smsSegmentCount(tmpl.body)} segment(s) · {tmpl.body.length} chars · trigger: {tmpl.triggerName}</p>
+                      </div>
+                      <div className="flex flex-shrink-0 gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => setSmsTemplateDraft(tmpl)}><Edit3 className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="sm" onClick={() => setDeleteConfirmSmsTemplate(tmpl)}><Trash2 className="h-4 w-4" /></Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-8 text-center">
+                  <MessageSquare className="mx-auto mb-2 h-8 w-8" style={{ color: 'var(--text-muted)' }} />
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No SMS templates yet. Create one to get started.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Send + editor column */}
+          <div className="col-span-12 space-y-6 xl:col-span-5">
+            {smsTemplateDraft ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>{smsTemplateDraft.id.startsWith('new-') ? 'New Template' : 'Edit Template'}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <label htmlFor="sms-tmpl-name" className="mb-1 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Name</label>
+                    <Input id="sms-tmpl-name" value={smsTemplateDraft.name} onChange={(e) => setSmsTemplateDraft({ ...smsTemplateDraft, name: e.target.value })} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="sms-tmpl-type" className="mb-1 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Type</label>
+                      <select
+                        id="sms-tmpl-type"
+                        value={smsTemplateDraft.templateType}
+                        onChange={(e) => setSmsTemplateDraft({ ...smsTemplateDraft, templateType: e.target.value as SmsTemplateType })}
+                        className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none"
+                        style={{ backgroundColor: 'var(--admin-input-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                      >
+                        <option value="transactional">Transactional</option>
+                        <option value="marketing">Marketing</option>
+                        <option value="automation">Automation</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="sms-tmpl-trigger" className="mb-1 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Trigger</label>
+                      <Input id="sms-tmpl-trigger" value={smsTemplateDraft.triggerName} onChange={(e) => setSmsTemplateDraft({ ...smsTemplateDraft, triggerName: e.target.value })} placeholder="manual" />
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="sms-tmpl-body" className="mb-1 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Message</label>
+                    <Textarea id="sms-tmpl-body" rows={4} value={smsTemplateDraft.body} onChange={(e) => setSmsTemplateDraft({ ...smsTemplateDraft, body: e.target.value })} placeholder="Use {{first_name}}, {{event_title}}, etc." />
+                    <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>{smsSegmentCount(smsTemplateDraft.body)} segment(s) · {smsTemplateDraft.body.length} chars</p>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                    <input type="checkbox" checked={smsTemplateDraft.isActive} onChange={(e) => setSmsTemplateDraft({ ...smsTemplateDraft, isActive: e.target.checked })} className="rounded border-gray-300" />
+                    Active
+                  </label>
+                  <div className="flex gap-2">
+                    <Button onClick={handleSaveSmsTemplate} disabled={saveSmsTemplate.isPending}><Save className="mr-2 h-4 w-4" />Save</Button>
+                    <Button variant="ghost" onClick={() => setSmsTemplateDraft(null)}>Cancel</Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Send SMS</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <label htmlFor="sms-recipients" className="mb-1 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Recipients (optional)</label>
+                    <Textarea id="sms-recipients" rows={2} value={smsTestRecipients} onChange={(e) => setSmsTestRecipients(e.target.value)} placeholder="+15551234567, +15557654321" />
+                    <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>Comma or newline separated. Leave blank to use an audience.</p>
+                  </div>
+                  <div>
+                    <label htmlFor="sms-audience" className="mb-1 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Audience</label>
+                    <select
+                      id="sms-audience"
+                      value={smsAudience}
+                      onChange={(e) => setSmsAudience(e.target.value)}
+                      className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none"
+                      style={{ backgroundColor: 'var(--admin-input-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                    >
+                      <option value="opt-in-marketing">Marketing opt-ins</option>
+                      <option value="all-customers">All paid customers</option>
+                      <option value="upcoming-attendees">Upcoming attendees</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="sms-body" className="mb-1 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Message</label>
+                    <Textarea id="sms-body" rows={4} value={smsSendBody} onChange={(e) => setSmsSendBody(e.target.value)} placeholder="Type your SMS message…" />
+                    <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>{smsSegmentCount(smsSendBody)} segment(s) · {smsSendBody.length} chars</p>
+                  </div>
+                  <Button onClick={handleSendSms} disabled={smsSending}>
+                    {smsSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                    Send SMS
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Recent messages */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Messages</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {smsData?.recentMessages.length ? (
+                  <div className="space-y-2">
+                    {smsData.recentMessages.slice(0, 10).map((msg) => (
+                      <div key={msg.id} className="flex items-start justify-between gap-2 rounded-lg border p-2 text-sm" style={{ borderColor: 'var(--border-color)' }}>
+                        <div className="min-w-0">
+                          <p className="font-medium" style={{ color: 'var(--text-primary)' }}>{msg.recipientPhone}</p>
+                          <p className="truncate" style={{ color: 'var(--text-muted)' }}>{msg.bodySnapshot}</p>
+                        </div>
+                        <Badge variant={smsStatusVariant[msg.status]}>{msg.status}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="py-4 text-center text-sm" style={{ color: 'var(--text-muted)' }}>No messages sent yet.</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'delivery' && (
         <div role="tabpanel" id="tabpanel-delivery" aria-labelledby="tab-delivery" className="grid grid-cols-12 gap-6">
           <Card className="col-span-12 xl:col-span-7">
@@ -2736,6 +2929,16 @@ See you at the studio,
       onConfirm={() => void handleDeleteTemplate()}
       title="Delete template?"
       message={`Are you sure you want to delete "${deleteConfirmTemplate?.name || 'this template'}"? This cannot be undone.`}
+      confirmLabel="Delete"
+      icon="trash"
+    />
+
+    <ConfirmDialog
+      isOpen={deleteConfirmSmsTemplate !== null}
+      onClose={() => setDeleteConfirmSmsTemplate(null)}
+      onConfirm={() => void handleDeleteSmsTemplate()}
+      title="Delete SMS template?"
+      message={`Are you sure you want to delete "${deleteConfirmSmsTemplate?.name || 'this template'}"? This cannot be undone.`}
       confirmLabel="Delete"
       icon="trash"
     />

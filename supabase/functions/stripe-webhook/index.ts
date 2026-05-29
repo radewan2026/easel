@@ -55,7 +55,7 @@ serve(async (req) => {
               stripe_subscription_id: subscriptionId,
               subscription_status: 'active',
             })
-            .or(`stripe_customer_id.eq.${customerId},is_active.eq.true`);
+            .eq('stripe_customer_id', customerId);
         }
         break;
       }
@@ -106,7 +106,7 @@ serve(async (req) => {
           await supabase
             .from('tenants')
             .update({ subscription_status: 'past_due' })
-            .eq('subscription_id', failedSubId);
+            .eq('stripe_subscription_id', failedSubId);
         }
         break;
       }
@@ -137,16 +137,16 @@ serve(async (req) => {
           .eq('slug', planSlug)
           .single();
 
-        await supabase
-          .from('tenants')
-          .update({
-            plan_id: plan?.id || null,
-            subscription_status: status,
-            subscription_current_period_end: new Date(
-              sub.current_period_end * 1000
-            ).toISOString(),
-          })
-          .eq('subscription_id', subId);
+          await supabase
+            .from('tenants')
+            .update({
+              plan_id: plan?.id || null,
+              subscription_status: status,
+              subscription_current_period_end: new Date(
+                sub.current_period_end * 1000
+              ).toISOString(),
+            })
+            .eq('stripe_subscription_id', subId);
         break;
       }
 
@@ -155,7 +155,7 @@ serve(async (req) => {
         await supabase
           .from('tenants')
           .update({ subscription_status: 'canceled' })
-          .eq('subscription_id', deletedSub.id);
+          .eq('stripe_subscription_id', deletedSub.id);
         break;
       }
 

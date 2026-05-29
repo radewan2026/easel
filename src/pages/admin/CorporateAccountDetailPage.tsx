@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { formatCurrency } from '../../lib/utils';
 import { Building2, ArrowLeft, Edit, Calendar, DollarSign, FileText, CreditCard } from 'lucide-react';
+import { FeatureGate } from '../../components/ui/FeatureGate';
 
 export default function CorporateAccountDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -58,6 +59,7 @@ export default function CorporateAccountDetailPage() {
   ];
 
   return (
+    <FeatureGate feature="corporate_accounts" showUpgradeCard upgradeTitle="Corporate Account" upgradeDescription="Upgrade to Growth or Pro to access corporate account details.">
     <div>
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => navigate('/admin/corporate-accounts')} className="p-2 rounded-lg hover:bg-gray-100" style={{ color: 'var(--text-secondary)' }}>
@@ -280,5 +282,6 @@ export default function CorporateAccountDetailPage() {
         </CardContent>
       </Card>
     </div>
+    </FeatureGate>
   );
 }

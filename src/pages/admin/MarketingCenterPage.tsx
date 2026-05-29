@@ -1,13 +1,16 @@
 import { Link } from 'react-router-dom';
 import { useMemo, useState } from 'react';
-import { ArrowRight, Copy, Download, Gift, Link2, Mail, Megaphone, MessageSquare, QrCode, RefreshCw, Save, Star, Tag, Trash2, Users } from 'lucide-react';
+import { ArrowRight, Copy, Download, Gift, Link2, Loader2, Mail, Megaphone, MessageSquare, QrCode, RefreshCw, Save, Sparkles, Star, Tag, Trash2, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Input } from '../../components/ui/Input';
+import { Textarea } from '../../components/ui/Textarea';
 import { useOwnerActionFeed } from '../../hooks/useOwnerActionFeed';
 import { absoluteMarketingUrl, analyticsHrefForSavedLink, buildQrImageUrl, buildTrackedUrl, readSavedMarketingLinks, writeSavedMarketingLinks, type SavedCampaignLink } from '../../lib/marketingLinks';
 import { slugify } from '../../lib/utils';
+import { callAiGateway } from '../../lib/aiGateway';
+import { useToast } from '../../components/ui/Toast';
 
 const campaignIdeas = [
   {
@@ -72,6 +75,7 @@ const channelPresets = [
 ];
 
 export default function MarketingCenterPage() {
+  const { showToast } = useToast();
   const ownerFeed = useOwnerActionFeed();
   const marketingActions = ownerFeed.filter(item => ['event', 'private_request', 'inventory'].includes(item.type)).slice(0, 4);
   const [baseUrl, setBaseUrl] = useState('/events');
@@ -83,6 +87,12 @@ export default function MarketingCenterPage() {
   const [linkName, setLinkName] = useState('Weekend seats Instagram link');
   const [savedLinks, setSavedLinks] = useState<SavedCampaignLink[]>(() => readSavedMarketingLinks());
   const [qrPreviewLink, setQrPreviewLink] = useState<SavedCampaignLink | null>(null);
+  const [aiSocialText, setAiSocialText] = useState('');
+  const [aiAdText, setAiAdText] = useState('');
+  const [isGeneratingSocial, setIsGeneratingSocial] = useState(false);
+  const [isGeneratingAd, setIsGeneratingAd] = useState(false);
+  const [aiCopiedSocial, setAiCopiedSocial] = useState(false);
+  const [aiCopiedAd, setAiCopiedAd] = useState(false);
 
   const trackedUrl = useMemo(() => buildTrackedUrl(baseUrl, {
     source: utmSource,
@@ -142,6 +152,64 @@ export default function MarketingCenterPage() {
   const deleteSavedLink = (id: string) => {
     persistSavedLinks(savedLinks.filter((link) => link.id !== id));
     if (qrPreviewLink?.id === id) setQrPreviewLink(null);
+  };
+
+  const generateSocialCopy = async () => {
+    setIsGeneratingSocial(true);
+    try {
+      const result = await callAiGateway({
+        task: 'social_copy',
+        messages: [
+          { role: 'system', content: 'You write Instagram captions and social media posts for a paint-and-sip studio. Be engaging, use emojis sparingly, include a call to action.' },
+          { role: 'user', content: `Write an Instagram caption and social post promoting a paint-and-sip studio. Campaign: ${utmCampaign}. Include relevant hashtags.` },
+        ],
+        maxTokens: 400,
+      });
+      if (result.content) {
+        setAiSocialText(result.content);
+        showToast('Social copy generated!');
+      } else {
+        showToast('Failed to generate copy', 'error');
+      }
+    } catch {
+      showToast('Failed to generate copy', 'error');
+    } finally {
+      setIsGeneratingSocial(false);
+    }
+  };
+
+  const generateAdCopy = async () => {
+    setIsGeneratingAd(true);
+    try {
+      const result = await callAiGateway({
+        task: 'ad_copy',
+        messages: [
+          { role: 'system', content: 'You write ad copy for a paint-and-sip studio. Concise, compelling, with a clear call to action.' },
+          { role: 'user', content: `Write a Facebook/Google ad for a paint-and-sip studio. Campaign theme: ${utmCampaign}. Include headline, body, and CTA.` },
+        ],
+        maxTokens: 400,
+      });
+      if (result.content) {
+        setAiAdText(result.content);
+        showToast('Ad copy generated!');
+      } else {
+        showToast('Failed to generate ad copy', 'error');
+      }
+    } catch {
+      showToast('Failed to generate ad copy', 'error');
+    } finally {
+      setIsGeneratingAd(false);
+    }
+  };
+
+  const copyToClipboard = async (text: string, setter: (v: boolean) => void) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setter(true);
+      window.setTimeout(() => setter(false), 1600);
+    } catch {
+      showToast('Failed to copy', 'error');
+    }
   };
 
   return (
@@ -320,6 +388,58 @@ export default function MarketingCenterPage() {
               </div>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>AI Content Generator</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Social Media Post</label>
+                <Button type="button" size="sm" variant="ghost" onClick={generateSocialCopy} disabled={isGeneratingSocial} className="text-primary-500">
+                  {isGeneratingSocial ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                  Generate
+                </Button>
+              </div>
+              <Textarea
+                value={aiSocialText}
+                onChange={(e) => setAiSocialText(e.target.value)}
+                rows={6}
+                placeholder="AI-generated Instagram caption or social post will appear here..."
+              />
+              {aiSocialText && (
+                <Button size="sm" variant="outline" onClick={() => copyToClipboard(aiSocialText, setAiCopiedSocial)}>
+                  <Copy className="h-3 w-3 mr-1" />
+                  {aiCopiedSocial ? 'Copied!' : 'Copy'}
+                </Button>
+              )}
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Ad Copy</label>
+                <Button type="button" size="sm" variant="ghost" onClick={generateAdCopy} disabled={isGeneratingAd} className="text-primary-500">
+                  {isGeneratingAd ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                  Generate
+                </Button>
+              </div>
+              <Textarea
+                value={aiAdText}
+                onChange={(e) => setAiAdText(e.target.value)}
+                rows={6}
+                placeholder="AI-generated Facebook/Google ad copy will appear here..."
+              />
+              {aiAdText && (
+                <Button size="sm" variant="outline" onClick={() => copyToClipboard(aiAdText, setAiCopiedAd)}>
+                  <Copy className="h-3 w-3 mr-1" />
+                  {aiCopiedAd ? 'Copied!' : 'Copy'}
+                </Button>
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
 

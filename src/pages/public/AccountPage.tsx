@@ -3,6 +3,7 @@ import { ArrowRight, Calendar, ClipboardList, Gift, LogOut, Mail, Settings, Shop
 import { Button } from '../../components/ui/Button';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import SEO from '../../components/SEO';
+import { SmsPreferencesWidget } from '../../components/public/SmsPreferencesWidget';
 import { useCustomerAuth } from '../../hooks/useCustomerAuth';
 import { useCustomerAccount } from '../../hooks/useCustomerAccount';
 import { useMembershipCredits } from '../../hooks/useMembershipCredits';
@@ -281,6 +282,8 @@ export default function AccountPage() {
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </section>
+
+            <SmsPreferencesWidget />
 
             <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="flex items-center gap-2 font-serif text-xl font-bold text-slate-950">

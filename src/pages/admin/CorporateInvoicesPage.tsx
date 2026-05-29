@@ -12,6 +12,7 @@ import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { FileText, Plus, Send, Edit, Trash2, AlertTriangle, RefreshCw } from 'lucide-react';
 import type { Invoice, InvoiceLineItem, InvoiceStatus } from '../../types/database';
 import { useToast } from '../../components/ui/Toast';
+import { FeatureGate } from '../../components/ui/FeatureGate';
 
 type TabId = 'draft' | 'sent' | 'paid' | 'past_due';
 
@@ -254,6 +255,7 @@ export default function CorporateInvoicesPage() {
   if (isLoading) return <LoadingSpinner />;
 
   return (
+    <FeatureGate feature="corporate_accounts" showUpgradeCard upgradeTitle="Corporate Invoices" upgradeDescription="Upgrade to Growth or Pro to manage corporate invoices.">
     <div>
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -744,5 +746,6 @@ export default function CorporateInvoicesPage() {
         isLoading={voidInvoice.isPending}
       />
     </div>
+    </FeatureGate>
   );
 }

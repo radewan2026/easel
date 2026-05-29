@@ -15,7 +15,6 @@ import {
   Palette,
   Search,
   ChevronRight,
-  UserCircle,
   Trash2,
   MessageCircle,
   Inbox,
@@ -23,7 +22,6 @@ import {
   PanelLeftOpen,
   Bell,
   Mail,
-  Share2,
   Activity,
   BarChart3,
   Send,
@@ -31,9 +29,7 @@ import {
   Moon,
   Monitor,
   ChevronDown,
-  FileText,
   Settings,
-  Package,
   Clock,
   Sparkles,
   CreditCard,
@@ -493,8 +489,8 @@ export function AdminLayout() {
     });
 
     galleries?.forEach(g => {
-      if (g.title.toLowerCase().includes(query)) {
-        results.push({ title: g.title, section: 'Galleries', action: () => navigate('/admin/galleries') });
+      if (g.name.toLowerCase().includes(query)) {
+        results.push({ title: g.name, section: 'Galleries', action: () => navigate('/admin/galleries') });
       }
     });
 

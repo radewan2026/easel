@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useBlogPosts, useBlogCategories, useCreateBlogPost, useUpdateBlogPost } from '../../hooks/useBlog';
 import { useSettings } from '../../hooks/useAdmin';
 import { slugify } from '../../lib/utils';
-import { Save, ArrowLeft, Eye, EyeOff, X, Image, Sparkles, Wand2, Lightbulb } from 'lucide-react';
+import { Save, ArrowLeft, Eye, EyeOff, X, Image, Sparkles, Wand2, Lightbulb, Loader2 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -12,6 +12,7 @@ import { Textarea } from '../../components/ui/Textarea';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { Badge } from '../../components/ui/Badge';
 import { useToast } from '../../components/ui/Toast';
+import { callAiGateway } from '../../lib/aiGateway';
 
 export default function EditBlogPage() {
   const { id } = useParams<{ id: string }>();
@@ -42,6 +43,9 @@ export default function EditBlogPage() {
   });
 
   const [isSaving, setIsSaving] = useState(false);
+  const [isGeneratingContent, setIsGeneratingContent] = useState(false);
+  const [isGeneratingHeadlines, setIsGeneratingHeadlines] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
 
   const [showHeadlineIdeas, setShowHeadlineIdeas] = useState(false);
   const [headlineIdeas, setHeadlineIdeas] = useState<string[]>([]);
@@ -116,79 +120,117 @@ export default function EditBlogPage() {
     showToast('Image added!');
   };
 
-  const handleGenerateContent = () => {
+  const handleGenerateContent = async () => {
     const brandName = settings?.find(s => s.key === 'brand_name')?.value || 'Paint & Sip';
     const brandPersona = settings?.find(s => s.key === 'brand_persona')?.value || 'fun, creative, welcoming';
-    const tagline = settings?.find(s => s.key === 'tagline')?.value || 'Paint, Sip, Create!';
-    
-    const title = formData.title || 'This Amazing Experience';
-    const topic = title.toLowerCase();
-    
-    const content = `<h2>Welcome to ${brandName}!</h2>
 
-<p>We're thrilled to share this guide about ${topic} with you. At ${brandName}, we believe in the power of creativity, community, and having a great time. Our ${brandPersona} approach makes every experience memorable and enjoyable.</p>
+    if (!formData.title.trim()) {
+      showToast('Enter a title first so the AI knows what to write about.', 'info');
+      return;
+    }
 
-<h2>Why ${topic.charAt(0).toUpperCase() + topic.slice(1)} Matters</h2>
+    setIsGeneratingContent(true);
+    try {
+      const result = await callAiGateway({
+        task: 'blog_content',
+        messages: [
+          { role: 'system', content: `You are a blog writer for ${brandName}. Brand persona: ${brandPersona}. Write in HTML format. Return only the HTML content, no markdown.` },
+          { role: 'user', content: `Write a complete blog post HTML body for: ${formData.title}. Include headings, paragraphs, and a list.` },
+        ],
+        maxTokens: 1000,
+      });
 
-<p>Whether you're a beginner or a seasoned pro, embracing ${topic} can transform your perspective and unlock new possibilities. It's not just about the activity itself—it's about the connections you make and the memories you create along the way.</p>
-
-<h2>What to Expect</h2>
-
-<ul>
-<li><strong>Friendly Atmosphere</strong> - Our space is designed to make everyone feel welcome and comfortable</li>
-<li><strong>Expert Guidance</strong> - Our talented team is here to help you every step of the way</li>
-<li><strong>All Materials Included</strong> - We've got everything you need to get started</li>
-<li><strong>Fun & Relaxation</strong> - This is your time to unwind and express yourself</li>
-</ul>
-
-<h2>Tips for Getting the Most Out of Your Experience</h2>
-
-<ol>
-<li><strong>Come with an Open Mind</strong> - Don't worry about perfection; focus on the journey</li>
-<li><strong>Ask Questions</strong> - Our team loves sharing their knowledge</li>
-<li><strong>Take Your Time</strong> - There's no rush; enjoy every moment</li>
-<li><strong>Connect with Others</strong> - You'll meet amazing people who share your interests</li>
-</ol>
-
-<h2>Ready to Join Us?</h2>
-
-<p>Book your spot today and discover why ${brandName} is the go-to destination for ${topic}. Visit our <a href="/events">events page</a> to see upcoming sessions. We can't wait to create something beautiful with you!</p>
-
-<p>${tagline}</p>
-
-<p><em>P.S. Follow us on <a href="https://instagram.com" target="_blank">Instagram</a> and <a href="https://facebook.com" target="_blank">Facebook</a> for inspiration and behind-the-scenes content!</em></p>`;
-    
-    setFormData(prev => ({ ...prev, content }));
-    showToast('Content generated with brand styling!');
+      if (result.content) {
+        const content = result.content;
+        setFormData(prev => ({ ...prev, content }));
+        showToast('Content generated with AI!');
+      } else {
+        showToast('AI generation failed. Try again.', 'error');
+      }
+    } catch {
+      showToast('Failed to generate content', 'error');
+    } finally {
+      setIsGeneratingContent(false);
+    }
   };
 
-  const handleGenerateHeadlines = () => {
-    const title = formData.title || 'this topic';
-    const headlines = [
-      `10 Essential Tips for Better ${title}`,
-      `How to Master ${title}: A Complete Guide`,
-      `Why ${title} Is Important for Your Business`,
-      `The Ultimate Guide to ${title} in 2025`,
-      `Everything You Need to Know About ${title}`,
-      `5 Secrets About ${title} They Don't Want You to Know`,
-      `How ${title} Can Transform Your Results`,
-      `The Beginners Guide to ${title}`,
-    ];
-    setHeadlineIdeas(headlines);
-    setShowHeadlineIdeas(true);
+  const handleGenerateHeadlines = async () => {
+    const brandName = settings?.find(s => s.key === 'brand_name')?.value || 'Paint & Sip';
+
+    setIsGeneratingHeadlines(true);
+    try {
+      const result = await callAiGateway({
+        task: 'blog_headlines',
+        messages: [
+          { role: 'system', content: `You help ${brandName} with blog headlines. Return exactly 8 headline ideas as a JSON array of strings, no other text.` },
+          { role: 'user', content: `Generate 8 blog post headline ideas for: ${formData.title || 'paint and sip studio content'}` },
+        ],
+        maxTokens: 400,
+      });
+
+      if (result.content) {
+        try {
+          const parsed = JSON.parse(result.content);
+          if (Array.isArray(parsed)) {
+            setHeadlineIdeas(parsed);
+            setShowHeadlineIdeas(true);
+            showToast('Headlines generated!');
+            return;
+          }
+        } catch {
+          const lines = result.content.split('\n').filter(l => l.trim().match(/^[\d"]/));
+          if (lines.length > 0) {
+            setHeadlineIdeas(lines.map(l => l.replace(/^\d+[\.\)]\s*"?|"?\s*$/g, '')));
+            setShowHeadlineIdeas(true);
+            showToast('Headlines generated!');
+            return;
+          }
+        }
+      }
+      showToast('Failed to generate headlines', 'error');
+    } catch {
+      showToast('Failed to generate headlines', 'error');
+    } finally {
+      setIsGeneratingHeadlines(false);
+    }
+  };
+
+  const handleGenerateImage = async () => {
+    const brandName = settings?.find(s => s.key === 'brand_name')?.value || 'Paint & Sip';
+
+    setIsGeneratingImage(true);
+    try {
+      const result = await callAiGateway({
+        task: 'image_generation',
+        messages: [
+          { role: 'system', content: `You generate promotional image URLs for ${brandName} blog posts. Return only a direct image URL.` },
+          { role: 'user', content: `Generate an image URL for a blog post titled: ${formData.title || 'paint and sip experience'}` },
+        ],
+        maxTokens: 200,
+      });
+
+      if (result.content && (result.content.startsWith('http://') || result.content.startsWith('https://'))) {
+        const imageUrl = result.content;
+        setFormData(prev => ({ ...prev, header_image_url: imageUrl }));
+        showToast('Image generated with AI!');
+        setIsGeneratingImage(false);
+        return;
+      }
+    } catch {
+      // fall through to unsplash fallback
+    }
+
+    const keywords = encodeURIComponent(formData.title || 'painting wine art');
+    const imageUrl = `https://source.unsplash.com/1200x800/?${keywords}`;
+    setFormData(prev => ({ ...prev, header_image_url: imageUrl }));
+    showToast('Stock photo applied (AI image generation unavailable)');
+    setIsGeneratingImage(false);
   };
 
   const applyHeadline = (headline: string) => {
     setFormData(prev => ({ ...prev, title: headline, slug: slugify(headline) }));
     setShowHeadlineIdeas(false);
     showToast('Headline applied!');
-  };
-
-  const handleGenerateImage = () => {
-    const keywords = encodeURIComponent(formData.title || 'painting wine art');
-    const imageUrl = `https://source.unsplash.com/1200x800/?${keywords}`;
-    setFormData(prev => ({ ...prev, header_image_url: imageUrl }));
-    showToast('Header image generated!');
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -238,12 +280,12 @@ export default function EditBlogPage() {
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Content</CardTitle>
                 <div className="flex gap-2">
-                  <Button variant="secondary" size="sm" onClick={handleGenerateHeadlines}>
-                    <Lightbulb className="h-4 w-4 mr-1" />
+                  <Button variant="secondary" size="sm" onClick={handleGenerateHeadlines} disabled={isGeneratingHeadlines}>
+                    {isGeneratingHeadlines ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Lightbulb className="h-4 w-4 mr-1" />}
                     Headline Ideas
                   </Button>
-                  <Button variant="secondary" size="sm" onClick={handleGenerateContent}>
-                    <Sparkles className="h-4 w-4 mr-1" />
+                  <Button variant="secondary" size="sm" onClick={handleGenerateContent} disabled={isGeneratingContent}>
+                    {isGeneratingContent ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
                     AI Auto Write
                   </Button>
                 </div>
@@ -337,9 +379,9 @@ export default function EditBlogPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Featured Image</CardTitle>
-                <Button variant="secondary" size="sm" onClick={handleGenerateImage}>
-                  <Wand2 className="h-4 w-4 mr-1" />
-                  AI Header Image
+                <Button variant="secondary" size="sm" onClick={handleGenerateImage} disabled={isGeneratingImage}>
+                  {isGeneratingImage ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Wand2 className="h-4 w-4 mr-1" />}
+                  {isGeneratingImage ? 'Generating...' : 'AI Header Image'}
                 </Button>
               </CardHeader>
               <CardContent>

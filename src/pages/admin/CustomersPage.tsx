@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Ca
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
+import { CustomerCommunicationHistory } from '../../components/admin/CustomerCommunicationHistory';
 import { Download, Eye, Search, Filter, FileText, FileSpreadsheet, ArrowUpDown, ArrowUp, ArrowDown, Users, ShoppingBag, Gift, Ticket, Mail, Calendar, Star, Package } from 'lucide-react';
 import { Pagination } from '../../components/ui/Pagination';
 import type { Attendee, GiftCard, Order, NewsletterSubscriber, Referral, Submission, WaitlistEntry, ProductOrder } from '../../types/database';
@@ -797,6 +798,15 @@ export default function AdminCustomersPage() {
                 ))}
               </div>
             </div>
+
+            <CustomerCommunicationHistory
+              email={selected.email}
+              phone={
+                selected.orders.find((o) => o.purchaser_phone)?.purchaser_phone
+                ?? selected.productOrders.find((o) => o.purchaser_phone)?.purchaser_phone
+                ?? null
+              }
+            />
           </div>
         )}
       </Modal>

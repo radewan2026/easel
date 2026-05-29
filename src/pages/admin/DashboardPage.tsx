@@ -4,7 +4,7 @@ import { usePrivateEventRequests } from '../../hooks/usePrivateEventRequests';
 import { usePayRecords } from '../../hooks/usePayRecords';
 import { useEventAssignments } from '../../hooks/useEventAssignments';
 import { formatCurrency, formatDateTime } from '../../lib/utils';
-import { Calendar, DollarSign, Users, Tag, TrendingUp, TrendingDown, Check, X, XCircle, BarChart3, AlertTriangle, Plus, Mail, Percent, RefreshCw, UsersRound, GripVertical, SlidersHorizontal, ArrowRight, Clock, Sparkles, CheckCircle2, Search, MoreVertical, Gift, ShoppingCart, Grid2X2, UserCircle, Palette, ChevronDown, Package, Building2, ShieldCheck, Database, ServerCog, CreditCard } from 'lucide-react';
+import { Calendar, DollarSign, Users, Tag, TrendingUp, TrendingDown, Check, X, XCircle, BarChart3, AlertTriangle, Plus, Mail, Percent, RefreshCw, UsersRound, GripVertical, SlidersHorizontal, ArrowRight, Clock, Sparkles, CheckCircle2, Search, MoreVertical, Gift, ShoppingCart, Grid2X2, UserCircle, Palette, ChevronDown, Package, Building2, ShieldCheck } from 'lucide-react';
 import LaunchChecklistWidget from '../../components/dashboard/LaunchChecklistWidget';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
@@ -14,7 +14,6 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useToast } from '../../components/ui/Toast';
 import { useAuth } from '../../hooks/useAuth';
 import { useOwnerActionFeed } from '../../hooks/useOwnerActionFeed';
-import { useProductionReadiness } from '../../hooks/useProductionReadiness';
 import type { EventAssignment, PayRecord, PrivateEventRequest } from '../../types/database';
 
 const COLORS = ['#eb6a3d', '#f08b67', '#4ade80', '#60a5fa', '#f472b6', '#a78bfa', '#fbbf24', '#34d399'];
@@ -128,7 +127,6 @@ export default function DashboardPage() {
   const { data: assignments = [] } = useEventAssignments();
   const ownerActionFeed = useOwnerActionFeed();
   const updatePrefs = useUpdateDashboardPreferences();
-  const readiness = useProductionReadiness();
 
   useEffect(() => {
     if (prefs?.widgets?.length) {
@@ -748,7 +746,6 @@ export default function DashboardPage() {
         );
 
       case 'analytics-summary': {
-        const pageViews = stats?.salesByWeek?.reduce((s, w) => s + (w.orders || 0), 0) || 0;
         return (
           <div key={widgetId} {...wrapperProps}>
             <Card className="h-full">

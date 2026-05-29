@@ -16,11 +16,10 @@ import {
   Route,
   Search,
   ShoppingCart,
-  TrendingUp,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend, LineChart, Line, AreaChart, Area,
+  Cell, LineChart, Line,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -737,7 +736,7 @@ See you at the studio,
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={120} />
                 <Tooltip />
                 <Bar dataKey="value" name="Count">
-                  {metrics.funnelData.map((entry, index) => (
+                  {metrics.funnelData.map((entry, _) => (
                     <Cell key={entry.name} fill={entry.fill} />
                   ))}
                 </Bar>

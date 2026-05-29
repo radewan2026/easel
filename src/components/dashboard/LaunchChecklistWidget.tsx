@@ -166,8 +166,6 @@ export default function LaunchChecklistWidget() {
   ], [employees.length, giftCards.length, hasBrandBasics, hasCheckoutSuccess, manualChecks, pricedEvents.length, privateRequests.length, publishedEvents.length, readiness.byId.email_backend, readiness.byId.payments]);
 
   const readyCount = tasks.filter((task) => task.status === 'ready').length;
-  const needsSetupCount = tasks.filter((task) => task.status === 'needs_setup').length;
-  const manualCount = tasks.filter((task) => task.status === 'manual').length;
   const progress = Math.round((readyCount / tasks.length) * 100);
 
   const toggleManual = (id: string) => {

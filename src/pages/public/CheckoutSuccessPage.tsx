@@ -190,7 +190,7 @@ export default function CheckoutSuccessPage() {
               </div>
             )}
 
-            {order && order.checkoutType === 'event' && order.totalSeats && order.totalSeats > 1 && (
+            {order && order.checkoutType === 'event' && order.event && order.totalSeats && order.totalSeats > 1 && (
               <div className="mb-6">
                 <EventInvitePanel
                   eventTitle={order.event.title}

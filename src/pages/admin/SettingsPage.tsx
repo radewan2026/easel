@@ -1,6 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useSettings, useUpdateSetting } from '../../hooks/useAdmin';
-import { AlertTriangle, CheckCircle, CreditCard, Database, Globe, Key, Loader2, Mail, Palette, Save, ServerCog, Share2, ShieldCheck, XCircle, Bot } from 'lucide-react';
+import { useTenantPlan } from '../../hooks/useTenantPlan';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '../../lib/supabase';
+import { AlertTriangle, CheckCircle, CreditCard, Database, DollarSign, ExternalLink, FileText, Globe, Key, Loader2, Mail, Palette, Save, ServerCog, Share2, ShieldCheck, XCircle, Bot } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
@@ -42,7 +46,7 @@ const defaultSettings = {
   showPastEvents: 'false',
 };
 
-type TabType = 'readiness' | 'general' | 'social' | 'appearance' | 'persona' | 'api' | 'email' | 'payments';
+type TabType = 'readiness' | 'general' | 'social' | 'appearance' | 'persona' | 'api' | 'email' | 'payments' | 'billing';
 type PaymentSubTab = 'methods' | 'stripe' | 'paypal';
 
 const readinessIcons: Record<ProductionReadinessCheck['id'], LucideIcon> = {
@@ -88,7 +92,12 @@ export default function SettingsPage() {
   const { data: settings, isLoading } = useSettings();
   const updateSetting = useUpdateSetting();
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState<TabType>('general');
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    const tabParam = searchParams.get('tab');
+    const validTabs: TabType[] = ['readiness', 'general', 'social', 'appearance', 'persona', 'api', 'email', 'payments', 'billing'];
+    return tabParam && validTabs.includes(tabParam as TabType) ? (tabParam as TabType) : 'general';
+  });
   const [paymentSubTab, setPaymentSubTab] = useState<PaymentSubTab>('methods');
 
   const [formData, setFormData] = useState<Record<string, string>>(defaultSettings);
@@ -150,6 +159,7 @@ export default function SettingsPage() {
     { id: 'api' as TabType, label: 'API Keys', icon: Key },
     { id: 'email' as TabType, label: 'Email', icon: Mail },
     { id: 'payments' as TabType, label: 'Payment Methods', icon: CreditCard },
+    { id: 'billing' as TabType, label: 'Billing', icon: DollarSign },
   ];
   const { checks: readinessChecks, readyCount, demoCount, needsSetupCount } = useProductionReadiness(formData);
 
@@ -865,7 +875,324 @@ export default function SettingsPage() {
             )}
           </div>
         )}
+
+        {activeTab === 'billing' && (
+          <BillingTabContent />
+        )}
       </div>
     </div>
   );
+}
+
+function BillingTabContent() {
+  const { showToast } = useToast();
+
+  const { data: tenant, isLoading, error } = useTenantPlan();
+
+  const [portalLoading, setPortalLoading] = useState(false);
+
+  const { data: invoiceData, isLoading: invoicesLoading } = useQuery({
+    queryKey: ['stripe-invoices'],
+    queryFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Not authenticated');
+
+      const funcUrl = `${import.meta.env.VITE_SUPABASE_URL || ''}/functions/v1/stripe-invoices`;
+      if (!funcUrl.startsWith('http')) return { invoices: [] };
+
+      const res = await fetch(funcUrl, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch invoices');
+      return res.json() as Promise<{ invoices: InvoiceItem[] }>;
+    },
+    enabled: !!tenant?.stripe_customer_id,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+    meta: { errorMessage: 'Failed to load invoices' },
+  });
+
+  const openPortal = useCallback(async () => {
+    setPortalLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Not authenticated');
+
+      const funcUrl = `${import.meta.env.VITE_SUPABASE_URL || ''}/functions/v1/stripe-portal`;
+      if (!funcUrl.startsWith('http')) {
+        showToast('Stripe portal is not yet available. Contact support to manage your subscription.', 'info');
+        return;
+      }
+
+      const res = await fetch(funcUrl, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.open(data.url, '_blank');
+      } else {
+        showToast(data.error || 'Failed to open portal', 'error');
+      }
+    } catch (err) {
+      console.debug('Portal error:', err);
+      showToast('Failed to open Stripe portal', 'error');
+    } finally {
+      setPortalLoading(false);
+    }
+  }, [showToast]);
+
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-center">
+          <p className="text-sm" style={{ color: 'var(--text-danger)' }}>Failed to load subscription data.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (isLoading) return <LoadingSpinner />;
+
+  const plan = tenant?.plan;
+  const status = tenant?.subscription_status;
+  const periodEnd = tenant?.subscription_current_period_end;
+
+  const statusBadge: Record<string, { variant: 'success' | 'warning' | 'danger' | 'gray'; label: string }> = {
+    active: { variant: 'success', label: 'Active' },
+    trialing: { variant: 'success', label: 'Trial' },
+    past_due: { variant: 'danger', label: 'Past Due' },
+    canceled: { variant: 'gray', label: 'Canceled' },
+    incomplete: { variant: 'warning', label: 'Incomplete' },
+  };
+
+  const badge = statusBadge[status || 'incomplete'] || { variant: 'gray' as const, label: status || 'Unknown' };
+
+  const plans = [
+    {
+      slug: 'starter',
+      name: 'Starter',
+      price: 149,
+      features: ['Event & booking management', 'Staff management (up to 5)', 'Basic reports', 'Standard support'],
+      highlighted: false,
+    },
+    {
+      slug: 'growth',
+      name: 'Growth',
+      price: 299,
+      features: ['Everything in Starter', 'Email marketing & campaigns', 'Advanced analytics', 'Corporate accounts', 'Unlimited staff', 'Priority support'],
+      highlighted: true,
+    },
+    {
+      slug: 'pro',
+      name: 'Pro',
+      price: 499,
+      features: ['Everything in Growth', 'Gift card system', 'Referral program', 'API access', 'Advanced automations', 'Dedicated support'],
+      highlighted: false,
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Current Plan</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+                {plan?.name || 'Starter'} Plan
+              </p>
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                {plan?.price_monthly ? `$${plan.price_monthly / 100}/mo` : 'Custom pricing'}
+              </p>
+            </div>
+            <Badge variant={badge.variant}>{badge.label}</Badge>
+          </div>
+          {periodEnd && (
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              Current period ends: {new Date(periodEnd).toLocaleDateString()}
+            </p>
+          )}
+          <div className="flex items-center gap-3 pt-2">
+            {tenant?.stripe_customer_id && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={openPortal}
+                disabled={portalLoading}
+              >
+                {portalLoading ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                )}
+                Manage Subscription
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Available Plans</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {plans.map((p) => {
+              const isCurrent = plan?.slug === p.slug;
+              return (
+                <div
+                  key={p.slug}
+                  className={`relative rounded-xl border-2 p-6 flex flex-col ${isCurrent ? 'border-primary-500' : 'border-gray-200'} ${p.highlighted ? 'shadow-lg' : ''}`}
+                  style={isCurrent ? { borderColor: 'var(--primary-color)' } : { borderColor: 'var(--border-color)' }}
+                >
+                  {p.highlighted && !isCurrent && (
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-semibold text-white" style={{ backgroundColor: 'var(--primary-color)' }}>
+                      Popular
+                    </div>
+                  )}
+                  {isCurrent && (
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-semibold text-green-700 bg-green-100">
+                      Current
+                    </div>
+                  )}
+                  <h3 className="text-xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>{p.name}</h3>
+                  <p className="text-3xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
+                    ${p.price}<span className="text-base font-normal" style={{ color: 'var(--text-muted)' }}>/mo</span>
+                  </p>
+                  <ul className="space-y-2 mb-6 flex-1">
+                    {p.features.map((f) => (
+                      <li key={f} className="flex items-start gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                        <CheckCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-green-500" />
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                  {isCurrent ? (
+                    <Button variant="outline" disabled className="w-full">
+                      Current Plan
+                    </Button>
+                  ) : (
+                    <Button
+                      className="w-full"
+                      onClick={() => showToast('Stripe checkout not yet connected. Contact support to upgrade.', 'info')}
+                    >
+                      Upgrade to {p.name}
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+
+            <div
+              className="relative rounded-xl border-2 border-dashed p-6 flex flex-col items-center justify-center text-center"
+              style={{ borderColor: 'var(--border-color)' }}
+            >
+              <h3 className="text-xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>Enterprise</h3>
+              <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+                Custom pricing for larger studios with advanced needs.
+              </p>
+              <ul className="space-y-2 mb-6 text-left w-full">
+                {['White-glove onboarding', 'Custom integrations', 'Dedicated account manager', 'SLA guarantees', 'Priority support 24/7', 'Custom contract terms'].map((f) => (
+                  <li key={f} className="flex items-start gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                    <CheckCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-primary-500" style={{ color: 'var(--primary-color)' }} />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => window.open('mailto:sales@paintandsip.com?subject=Enterprise%20Plan%20Inquiry', '_blank')}
+              >
+                Contact Sales
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {tenant?.stripe_customer_id && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Invoice History</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {invoicesLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-12 rounded-lg bg-gray-200 animate-pulse" />
+                ))}
+              </div>
+            ) : invoiceData?.invoices && invoiceData.invoices.length > 0 ? (
+              <div className="space-y-2">
+                {invoiceData.invoices.slice(0, 10).map((inv) => (
+                  <div
+                    key={inv.id}
+                    className="flex items-center justify-between p-3 rounded-lg"
+                    style={{ backgroundColor: 'var(--bg-secondary)' }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <FileText className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+                      <div>
+                        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                          {inv.number || inv.id.slice(0, 12)}
+                        </p>
+                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                          {new Date(inv.created).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                        ${(inv.amount_paid / 100).toFixed(2)}
+                      </span>
+                      <Badge variant={inv.status === 'paid' ? 'success' : inv.status === 'past_due' ? 'danger' : inv.status === 'draft' ? 'gray' : 'warning'}>
+                        {inv.status}
+                      </Badge>
+                      {inv.hosted_invoice_url && (
+                        <a
+                          href={inv.hosted_invoice_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1 rounded hover:bg-gray-100"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                No invoices found for this account.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+interface InvoiceItem {
+  id: string;
+  number: string | null;
+  amount_paid: number;
+  amount_due: number;
+  status: string;
+  currency: string;
+  created: string;
+  paid_at: string | null;
+  hosted_invoice_url: string | null;
+  invoice_pdf: string | null;
+  lines: Array<{
+    description: string | null;
+    amount: number;
+    period: { start: string; end: string };
+  }>;
 }

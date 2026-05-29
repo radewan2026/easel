@@ -141,7 +141,7 @@ export function useEmailCenter() {
       const backendConnected = !broadcastResult.error;
 
       // Fetch from new email tables if they exist
-      const [templatesResult, automationsResult, campaignsResult, sendsResult, suppressResult, prefsResult] = await Promise.all([
+      const [templatesResult, , , , , ] = await Promise.all([
         supabase.from('email_templates').select('*').order('updated_at', { ascending: false }).maybeSingle(),
         supabase.from('email_automations').select('*').order('updated_at', { ascending: false }).maybeSingle(),
         supabase.from('email_campaigns').select('*').order('updated_at', { ascending: false }).maybeSingle(),
@@ -150,7 +150,7 @@ export function useEmailCenter() {
         supabase.from('customer_email_preferences').select('customer_email').eq('marketing_enabled', false).maybeSingle(),
       ]);
 
-      const tablesExist = !templatesResult.error && !automationsResult.error && !campaignsResult.error;
+      const tablesExist = !templatesResult.error;
       const typedOrders = orders as unknown as Array<Record<string, unknown>>;
       const typedEvents = events as unknown as Array<Record<string, unknown>>;
       const typedSubscribers = subscribers as unknown as Array<Record<string, unknown>>;
@@ -174,7 +174,6 @@ export function useEmailCenter() {
         const sold = Number(event.max_seats || 0) - Number(event.seats_available ?? event.max_seats ?? 0);
         return seats > 0 && sold / seats < 0.35;
       }).length;
-      const totalCapacity = typedEvents.reduce((sum, event) => sum + Number(event.max_seats || 0), 0);
       const activeSubscribers = typedSubscribers.filter((subscriber) => subscriber.is_active !== false);
       const unredeemedGiftCards = typedGiftCards.filter((card) => !card.is_redeemed);
       const openPrivateRequests = typedPrivateRequests.filter((request) => ['submitted', 'contacted'].includes(String(request.status)));

@@ -9,6 +9,7 @@ import { Textarea } from '../../components/ui/Textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { Button } from '../../components/ui/Button';
+import { FeatureGate } from '../../components/ui/FeatureGate';
 
 export default function BulkEmailPage() {
   const { data: orders, isLoading } = useOrders();
@@ -118,6 +119,7 @@ export default function BulkEmailPage() {
   }
 
   return (
+    <FeatureGate feature="email_marketing" showUpgradeCard upgradeTitle="Bulk Email" upgradeDescription="Upgrade to Growth or Pro to send bulk emails to attendees.">
     <div>
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -222,5 +224,6 @@ export default function BulkEmailPage() {
         </div>
       </div>
     </div>
+    </FeatureGate>
   );
 }

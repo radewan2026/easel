@@ -24,7 +24,20 @@ export function FeatureGate({
 }: FeatureGateProps) {
   const { hasFeature, isLoading } = useFeatures();
 
-  if (isLoading) return null;
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Card className="max-w-md w-full">
+          <div className="p-8 text-center">
+            <div className="h-12 w-12 mx-auto mb-4 rounded-full bg-gray-200 animate-pulse" />
+            <div className="h-5 w-48 mx-auto mb-2 rounded bg-gray-200 animate-pulse" />
+            <div className="h-4 w-64 mx-auto mb-6 rounded bg-gray-200 animate-pulse" />
+            <div className="h-10 w-32 mx-auto rounded bg-gray-200 animate-pulse" />
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   if (hasFeature(feature)) return <>{children}</>;
 
