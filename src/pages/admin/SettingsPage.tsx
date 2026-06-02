@@ -892,6 +892,7 @@ function BillingTabContent() {
   const { data: tenant, isLoading, error } = useTenantPlan();
 
   const [portalLoading, setPortalLoading] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
 
   const { data: invoiceData, isLoading: invoicesLoading } = useQuery({
     queryKey: ['stripe-invoices'],
@@ -940,6 +941,40 @@ function BillingTabContent() {
       showToast('Failed to open Stripe portal', 'error');
     } finally {
       setPortalLoading(false);
+    }
+  }, [showToast]);
+
+  const startCheckout = useCallback(async (planSlug: string) => {
+    setCheckoutLoading(planSlug);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Not authenticated');
+
+      const funcUrl = `${import.meta.env.VITE_SUPABASE_URL || ''}/functions/v1/stripe-checkout`;
+      if (!funcUrl.startsWith('http')) {
+        showToast('Stripe checkout is not yet available. Contact support to upgrade.', 'info');
+        return;
+      }
+
+      const res = await fetch(funcUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ plan_slug: planSlug }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        showToast(data.error || 'Failed to start checkout', 'error');
+      }
+    } catch (err) {
+      console.debug('Checkout error:', err);
+      showToast('Failed to start checkout', 'error');
+    } finally {
+      setCheckoutLoading(null);
     }
   }, [showToast]);
 
@@ -1079,8 +1114,12 @@ function BillingTabContent() {
                   ) : (
                     <Button
                       className="w-full"
-                      onClick={() => showToast('Stripe checkout not yet connected. Contact support to upgrade.', 'info')}
+                      onClick={() => startCheckout(p.slug)}
+                      disabled={checkoutLoading === p.slug}
                     >
+                      {checkoutLoading === p.slug ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : null}
                       Upgrade to {p.name}
                     </Button>
                   )}

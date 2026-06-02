@@ -46,14 +46,18 @@ serve(async (req) => {
         const subscriptionId = session.subscription as string;
         const customerId = session.customer as string;
         if (subscriptionId && customerId) {
-          await supabase
-            .from('tenants')
-            .update({
-              stripe_customer_id: customerId,
-              stripe_subscription_id: subscriptionId,
-              subscription_status: 'active',
-            })
-            .eq('stripe_customer_id', customerId);
+          const tenantId = session.client_reference_id;
+          const query = tenantId
+            ? supabase.from('tenants').update({
+                stripe_customer_id: customerId,
+                stripe_subscription_id: subscriptionId,
+                subscription_status: 'active',
+              }).eq('id', tenantId)
+            : supabase.from('tenants').update({
+                stripe_subscription_id: subscriptionId,
+                subscription_status: 'active',
+              }).eq('stripe_customer_id', customerId);
+          await query;
         }
         break;
       }

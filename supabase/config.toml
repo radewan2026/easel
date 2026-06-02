@@ -38,3 +38,33 @@ import_map = false
 enabled = true
 verify_jwt = false
 import_map = false
+
+[functions.stripe-checkout]
+enabled = true
+verify_jwt = false
+import_map = false
+
+[functions.stripe-webhook]
+enabled = true
+verify_jwt = false
+import_map = false
+
+[functions.stripe-portal]
+enabled = true
+verify_jwt = false
+import_map = false
+
+[functions.stripe-invoices]
+enabled = true
+verify_jwt = false
+import_map = false
+
+[functions.sms-worker]
+enabled = true
+verify_jwt = false
+import_map = false
+
+[functions.sms-webhook]
+enabled = true
+verify_jwt = false
+import_map = false
