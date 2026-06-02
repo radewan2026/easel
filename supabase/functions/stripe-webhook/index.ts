@@ -45,8 +45,6 @@ serve(async (req) => {
         const session = event.data.object as Stripe.Checkout.Session;
         const subscriptionId = session.subscription as string;
         const customerId = session.customer as string;
-        const customerEmail = session.customer_email || session.customer_details?.email;
-
         if (subscriptionId && customerId) {
           await supabase
             .from('tenants')

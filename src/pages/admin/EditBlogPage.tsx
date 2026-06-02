@@ -51,6 +51,7 @@ export default function EditBlogPage() {
   const [headlineIdeas, setHeadlineIdeas] = useState<string[]>([]);
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (!isNew && existingPost) {
       setFormData({
         title: existingPost.title,
@@ -65,6 +66,7 @@ export default function EditBlogPage() {
         is_published: existingPost.is_published,
       });
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [isNew, existingPost]);
 
   const handleTitleChange = (value: string) => {
@@ -180,7 +182,7 @@ export default function EditBlogPage() {
         } catch {
           const lines = result.content.split('\n').filter(l => l.trim().match(/^[\d"]/));
           if (lines.length > 0) {
-            setHeadlineIdeas(lines.map(l => l.replace(/^\d+[\.\)]\s*"?|"?\s*$/g, '')));
+            setHeadlineIdeas(lines.map(l => l.replace(/^\d+[.)]\s*"?|"?\s*$/g, '')));
             setShowHeadlineIdeas(true);
             showToast('Headlines generated!');
             return;

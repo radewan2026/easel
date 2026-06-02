@@ -14,10 +14,12 @@ export function SmsPreferencesWidget() {
   const [remindersEnabled, setRemindersEnabled] = useState(true);
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (preferences.data) {
       setMarketingEnabled(preferences.data.marketingEnabled);
       setRemindersEnabled(preferences.data.appointmentRemindersEnabled);
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [preferences.data]);
 
   const phoneValid = /^\+?[\d\s\-().]{7,20}$/.test(phone.trim());

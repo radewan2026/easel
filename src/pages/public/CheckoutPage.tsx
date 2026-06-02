@@ -1,4 +1,3 @@
-// @ts-nocheck — TODO: fix strict null checks (event can be null from useEvent)
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useCart } from '../../hooks/useCart';
@@ -276,9 +275,9 @@ function EventCheckout({ slug, initialQuantity }: { slug: string; initialQuantit
         userEmail: purchaserEmail.trim(),
         properties: {
           checkoutType: 'event',
-          eventId: event.id,
-          eventSlug: event.slug,
-          eventTitle: event.title,
+          eventId: event!.id,
+          eventSlug: event!.slug,
+          eventTitle: event!.title,
           quantity: selectedQuantity,
           subtotal,
           addOnSubtotal,
@@ -289,7 +288,7 @@ function EventCheckout({ slug, initialQuantity }: { slug: string; initialQuantit
       });
 
       const result = await createOrder.mutateAsync({
-        eventId: event.id,
+        eventId: event!.id,
         purchaserName: purchaserName.trim(),
         purchaserEmail: purchaserEmail.trim(),
         purchaserPhone: purchaserPhone.trim() || undefined,
@@ -324,10 +323,10 @@ function EventCheckout({ slug, initialQuantity }: { slug: string; initialQuantit
       }
 
       const creditRedemption = result.membershipRedemption || (creditSeats > 0 ? await membership.redeemCredits({
-          eventId: event.id,
-          orderId: result.order.id,
+          eventId: event!.id,
           creditsUsed: creditSeats,
           amountCovered: creditDiscount,
+          orderId: result.order.id,
         }) : null);
 
       if (promoApplied && appliedCouponId) {
@@ -348,7 +347,7 @@ function EventCheckout({ slug, initialQuantity }: { slug: string; initialQuantit
         entityId: result.order.id,
         entityName: purchaserName,
         details: {
-          event: event.title,
+          event: event!.title,
           seats: selectedQuantity,
           subtotal,
           addOnSubtotal,
@@ -363,13 +362,13 @@ function EventCheckout({ slug, initialQuantity }: { slug: string; initialQuantit
 
       localStorage.setItem('checkout_success', JSON.stringify({
         event: {
-          title: event.title,
-          slug: event.slug,
-          start_datetime: event.start_datetime,
-          end_datetime: event.end_datetime,
-          venue: event.venue ? { name: event.venue.name, city: event.venue.city, state: event.venue.state } : null,
-          main_image_url: event.main_image_url,
-          base_price_per_seat: event.base_price_per_seat,
+          title: event!.title,
+          slug: event!.slug,
+          start_datetime: event!.start_datetime,
+          end_datetime: event!.end_datetime,
+          venue: event!.venue ? { name: event!.venue.name, city: event!.venue.city, state: event!.venue.state } : null,
+          main_image_url: event!.main_image_url,
+          base_price_per_seat: event!.base_price_per_seat,
         },
         purchaserName: purchaserName.trim(),
         purchaserEmail: purchaserEmail.trim(),
@@ -398,9 +397,9 @@ function EventCheckout({ slug, initialQuantity }: { slug: string; initialQuantit
         userEmail: purchaserEmail.trim(),
         properties: {
           checkoutType: 'event',
-          eventId: event.id,
-          eventSlug: event.slug,
-          eventTitle: event.title,
+          eventId: event!.id,
+          eventSlug: event!.slug,
+          eventTitle: event!.title,
           orderId: result.order.id,
           status: orderStatus,
           quantity: selectedQuantity,
@@ -428,8 +427,8 @@ function EventCheckout({ slug, initialQuantity }: { slug: string; initialQuantit
         userEmail: purchaserEmail.trim() || null,
         properties: {
           checkoutType: 'event',
-          eventId: event.id,
-          eventSlug: event.slug,
+          eventId: event!.id,
+          eventSlug: event!.slug,
           message: err instanceof Error ? err.message : 'Order creation failed',
         },
       });
@@ -473,10 +472,10 @@ function EventCheckout({ slug, initialQuantity }: { slug: string; initialQuantit
 
         <Card className="mb-6">
           <CardContent className="p-4">
-            <h2 className="font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>{event.title}</h2>
+            <h2 className="font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>{event!.title}</h2>
             <div className="flex flex-wrap gap-4 text-sm" style={{ color: 'var(--text-secondary)' }}>
-              <span className="flex items-center gap-1"><Calendar className="h-4 w-4" /> {formatDateTime(event.start_datetime)}</span>
-              {event.venue && <span className="flex items-center gap-1"><MapPin className="h-4 w-4" /> {event.venue.name}</span>}
+              <span className="flex items-center gap-1"><Calendar className="h-4 w-4" /> {formatDateTime(event!.start_datetime)}</span>
+              {event!.venue && <span className="flex items-center gap-1"><MapPin className="h-4 w-4" /> {event!.venue.name}</span>}
             </div>
           </CardContent>
         </Card>
@@ -745,9 +744,9 @@ function EventCheckout({ slug, initialQuantity }: { slug: string; initialQuantit
               <CardContent className="space-y-4">
                 <div className="flex justify-between">
                   <div>
-                    <p style={{ color: 'var(--text-primary)' }}>{event.title}</p>
+                    <p style={{ color: 'var(--text-primary)' }}>{event!.title}</p>
                     <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                      {formatDateTime(event.start_datetime)}
+                      {formatDateTime(event!.start_datetime)}
                     </p>
                   </div>
                 </div>

@@ -21,16 +21,6 @@ type EmailBroadcast = {
   status: string;
 };
 
-type SendRecord = {
-  id: string;
-  recipient_email: string;
-  recipient_name: string | null;
-  subject_snapshot: string;
-  body_snapshot: string;
-  status: string;
-  provider_message_id: string | null;
-};
-
 type WorkerResult = {
   dryRun: boolean;
   processed: number;

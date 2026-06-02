@@ -45,7 +45,11 @@ export default function NewsletterPage() {
     scheduled_time: '',
   });
 
-  useEffect(() => { setCurrentPage(1); }, [sourceFilter, sortField, sortDirection]);
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setCurrentPage(1);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [sourceFilter, sortField, sortDirection]);
 
   const brandName = settings?.find((s) => s.key === 'brandName')?.value || 'Paint & Sip';
   const brandPersona = settings?.find((s) => s.key === 'brandPersona')?.value || 'friendly, creative, welcoming';
@@ -85,11 +89,6 @@ export default function NewsletterPage() {
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const paginatedSubscribers = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return null;
-    return sortDirection === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />;
-  };
 
   const handleSendNow = () => {
     showToast('Use Email Center to send newsletter campaigns.');
@@ -272,19 +271,19 @@ Return ONLY the raw newsletter content (no JSON, no markdown formatting), ready 
                     <thead>
                       <tr style={{ borderColor: 'var(--border-color)' }}>
 <th className="text-left py-3 px-4 font-medium cursor-pointer hover:opacity-80" style={{ color: 'var(--text-secondary)' }} onClick={() => handleSort('email')}>
-                           <span className="flex items-center gap-1">Email <SortIcon field="email" /></span>
+                           <span className="flex items-center gap-1">Email {sortField === 'email' ? (sortDirection === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />) : null}</span>
                          </th>
                          <th className="text-left py-3 px-4 font-medium cursor-pointer hover:opacity-80" style={{ color: 'var(--text-secondary)' }} onClick={() => handleSort('name')}>
-                           <span className="flex items-center gap-1">Name <SortIcon field="name" /></span>
+                           <span className="flex items-center gap-1">Name {sortField === 'name' ? (sortDirection === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />) : null}</span>
                          </th>
                          <th className="text-left py-3 px-4 font-medium cursor-pointer hover:opacity-80" style={{ color: 'var(--text-secondary)' }} onClick={() => handleSort('source')}>
-                           <span className="flex items-center gap-1">Source <SortIcon field="source" /></span>
+                           <span className="flex items-center gap-1">Source {sortField === 'source' ? (sortDirection === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />) : null}</span>
                          </th>
                          <th className="text-left py-3 px-4 font-medium cursor-pointer hover:opacity-80" style={{ color: 'var(--text-secondary)' }} onClick={() => handleSort('is_active')}>
-                           <span className="flex items-center gap-1">Status <SortIcon field="is_active" /></span>
+                           <span className="flex items-center gap-1">Status {sortField === 'is_active' ? (sortDirection === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />) : null}</span>
                          </th>
                          <th className="text-left py-3 px-4 font-medium cursor-pointer hover:opacity-80" style={{ color: 'var(--text-secondary)' }} onClick={() => handleSort('created_at')}>
-                           <span className="flex items-center gap-1">Subscribed <SortIcon field="created_at" /></span>
+                           <span className="flex items-center gap-1">Subscribed {sortField === 'created_at' ? (sortDirection === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />) : null}</span>
                          </th>
                         <th className="text-right py-3 px-4 font-medium" style={{ color: 'var(--text-muted)' }}></th>
                       </tr>

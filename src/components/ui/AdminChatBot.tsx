@@ -268,6 +268,7 @@ export function AdminChatBot({ isOpen: propIsOpen, onToggle, navigate: propNavig
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const listenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const msgIdRef = useRef(0);
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current) {
@@ -323,7 +324,7 @@ export function AdminChatBot({ isOpen: propIsOpen, onToggle, navigate: propNavig
 
     recognition.start();
     recognitionRef.current = recognition;
-  }, [isListening, stopListening]);
+  }, [isListening, stopListening, setInput]);
 
   const toggleListening = useCallback(() => {
     if (isListening) {
@@ -581,7 +582,7 @@ Would you like more details on any of these?`;
     if (!input.trim()) return;
 
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: `user-${msgIdRef.current++}`,
       role: 'user',
       content: input,
       isNew: true,
@@ -626,7 +627,7 @@ Would you like more details on any of these?`;
       }
 
       const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: `msg-${msgIdRef.current++}`,
         role: 'assistant',
         content: response,
         isNew: true,

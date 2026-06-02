@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import { ArrowRight, Calendar, CheckCircle2, Gift, History, Mail, MessageSquare, Plus, Send, Sparkles, Wand2 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
@@ -123,6 +123,7 @@ export default function AssistantPage() {
     .filter((event: Event) => {
       const max = Number(event.max_seats || 0);
       const available = Number(event.seats_available ?? max);
+      // eslint-disable-next-line react-hooks/purity
       return max > 0 && (max - available) / max < 0.35 && new Date(event.start_datetime).getTime() > Date.now();
     })
     .slice(0, 5);
@@ -142,6 +143,7 @@ export default function AssistantPage() {
   }, [audit]);
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (!shouldUseRemoteMemory || !settings || hasLoadedRemoteThreads) {
       if (!shouldUseRemoteMemory) setHasLoadedRemoteThreads(true);
       return;
@@ -159,10 +161,12 @@ export default function AssistantPage() {
       }
     }
     setHasLoadedRemoteThreads(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [settings, assistantSettingsKey, hasLoadedRemoteThreads, shouldUseRemoteMemory]);
 
+  const auditIdRef = useRef(0);
   const recordAudit = (action: string, detail: string) => {
-    const item = { id: `audit-${Date.now()}`, action, detail, timestamp: new Date().toISOString() };
+    const item = { id: `audit-${auditIdRef.current++}`, action, detail, timestamp: new Date().toISOString() };
     setAudit((current) => [item, ...current].slice(0, 25));
     logActivity({
       action: 'settings.updated',
@@ -193,19 +197,14 @@ export default function AssistantPage() {
     return result.content;
   };
 
-  const contextSummary = useMemo(() => {
-    const revenue = formatCurrency(stats?.revenue?.value || 0);
-    const seats = stats?.seatsSold?.value || 0;
-    const giftCards = formatCurrency(stats?.giftCardLiability || 0);
-    return {
-      revenue,
-      seats,
-      giftCards,
-      urgentCount: urgentActions.length,
-      privateLeads: submittedRequests.length,
-      lowFillCount: lowFillEvents.length,
-    };
-  }, [stats, urgentActions.length, submittedRequests.length, lowFillEvents.length]);
+  const contextSummary = {
+    revenue: formatCurrency(stats?.revenue?.value || 0),
+    seats: stats?.seatsSold?.value || 0,
+    giftCards: formatCurrency(stats?.giftCardLiability || 0),
+    urgentCount: urgentActions.length,
+    privateLeads: submittedRequests.length,
+    lowFillCount: lowFillEvents.length,
+  };
 
   const buildResponse = async (prompt: string) => {
     const lower = prompt.toLowerCase();

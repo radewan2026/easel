@@ -103,12 +103,14 @@ export default function SettingsPage() {
   const [formData, setFormData] = useState<Record<string, string>>(defaultSettings);
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (settings) {
       const stored = settings.find((s) => s.key === 'siteSettings')?.value as Record<string, string> | undefined;
       if (stored) {
         setFormData(prev => ({ ...prev, ...defaultSettings, ...stored }));
       }
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [settings]);
 
   const handleSave = async () => {

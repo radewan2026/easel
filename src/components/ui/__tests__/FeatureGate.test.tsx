@@ -68,7 +68,6 @@ describe('FeatureGate', () => {
 
   it('redirects to billing when View Plans is clicked', async () => {
     const originalLocation = window.location
-    const assignMock = vi.fn()
     Object.defineProperty(window, 'location', {
       value: { ...originalLocation, href: '' },
       writable: true,

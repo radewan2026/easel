@@ -57,7 +57,6 @@ async function handleTwilioWebhook(
   const messageSid = params.MessageSid || params.SmsSid || '';
   const messageStatus = params.MessageStatus || params.SmsStatus || '';
   const from = params.From || params.Msn || '';
-  const to = params.To || '';
   const errorCode = params.ErrorCode || '';
   const errorMessage = params.ErrorMessage || '';
 

@@ -736,7 +736,7 @@ See you at the studio,
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={120} />
                 <Tooltip />
                 <Bar dataKey="value" name="Count">
-                  {metrics.funnelData.map((entry, _) => (
+                  {metrics.funnelData.map((entry) => (
                     <Cell key={entry.name} fill={entry.fill} />
                   ))}
                 </Bar>

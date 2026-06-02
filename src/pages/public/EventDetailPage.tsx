@@ -23,7 +23,7 @@ function addToRecentlyViewed(event: Event) {
     const recent: Event[] = stored ? JSON.parse(stored) as Event[] : [];
     const updated = [event, ...recent.filter((recentEvent) => recentEvent.id !== event.id)].slice(0, MAX_RECENT);
     localStorage.setItem('recently_viewed_events', JSON.stringify(updated));
-  } catch (error) {
+  } catch {
     /* Unable to update recently viewed events */
   }
 }

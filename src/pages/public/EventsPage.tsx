@@ -22,7 +22,7 @@ function useRecentlyViewed() {
     try {
       const stored = localStorage.getItem('recently_viewed_events');
       return stored ? JSON.parse(stored) as Event[] : [];
-    } catch (error) {
+    } catch {
       /* Unable to load recently viewed events */
       return [];
     }
@@ -33,7 +33,7 @@ function useRecentlyViewed() {
     setRecent(updated);
     try {
       localStorage.setItem('recently_viewed_events', JSON.stringify(updated));
-    } catch (error) {
+    } catch {
       /* Unable to save recently viewed events */
     }
   };

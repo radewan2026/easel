@@ -55,7 +55,9 @@ export function useEventAddOns(eventSlug: string, products: Product[] = []) {
   const [storedAddOns, setStoredAddOns] = useState<EventAddOn[]>(() => readStoredAddOns(eventSlug));
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     setStoredAddOns(readStoredAddOns(eventSlug));
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [eventSlug]);
 
   const addOns = useMemo(() => mergeProductAddOns(products, storedAddOns), [products, storedAddOns]);
